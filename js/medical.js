@@ -145,11 +145,13 @@
   // None are bundled: the app never invents them. Shape: { hr: "50–110 bpm" }.
   const MISSION_LIMITS = {};
 
+  // Below is red, normal is green, over is orange. Each also has its own icon and words.
   const STATUS = {
-    within: { icon: "✓", label: "Within reference" },
-    outside: { icon: "▲", label: "Outside reference" },
+    normal: { icon: "✓", label: "Normal" },
+    below: { icon: "▼", label: "Below" },
+    over: { icon: "▲", label: "Over" },
     recheck: { icon: "↻", label: "Needs recheck" },
-    nodata: { icon: "?", label: "Insufficient data" }
+    nodata: { icon: "?", label: "No data" }
   };
 
   const SYMPTOMS = ["Dizziness", "Headache", "Nausea", "Shortness of breath",
@@ -267,6 +269,8 @@
   let tab = "dash";
   let group = GROUPS[0].id;
   let detailType = null;
+  let system = null; // selected body system, or null for all
+  let picked = "bp"; // indicator shown in the trend chart
 
   const crew = () => CREW.find(member => member.id === store.activeCrew);
   const readingsFor = type => [...SAMPLE_READINGS, ...store.measurements]
@@ -315,8 +319,8 @@
       return { key: "recheck", reason: `The last reading is ${ago(latest.at).replace(" ago", "")} old. Take a new one.` };
     }
     const problem = def.check(latest);
-    return problem ? { key: "outside", reason: problem } :
-      { key: "within", reason: "Inside the general adult reference." };
+    return problem ? { key: problem.startsWith("Above") ? "over" : "below", reason: problem } :
+      { key: "normal", reason: "Inside the general adult reference." };
   }
 
   function trendOf(type, list) {
@@ -436,47 +440,219 @@
     return h("p", { class: "med-chart-key", text: parts.join(" · ") });
   }
 
+  /* ---------- Indicators: device vitals plus Daily check-in values ---------- */
+
+  // Values written by the Daily check-in (Routines view).
+  const ROUTINE = {
+    sleep: {
+      name: "Sleep", unit: "h", field: "sleepHours", decimals: 1, lo: 7, hi: 9, short: "the 7–9 h reference",
+      ref: "7–9 h of sleep per night. Source: National Sleep Foundation (adults)."
+    },
+    mood: {
+      name: "Mood", unit: "/ 5", field: "mood", lo: 3, hi: 5, short: "the 3–5 part of your scale",
+      ref: "Your own 1–5 rating; 1–2 counts as low. Not a clinical score."
+    },
+    stress: {
+      name: "Stress", unit: "/ 10", field: "stress", lo: 0, hi: 6, short: "the 0–6 part of your scale",
+      ref: "Your own 0–10 rating; 7 or more counts as high. Not a clinical score."
+    },
+    water: {
+      name: "Water", unit: "mL", field: "water", own: true, short: "your own 7-day average (±20%)",
+      ref: "Compared with your own 7-day average. The mission fluid plan is not loaded."
+    },
+    activity: {
+      name: "Exercise", unit: "min", field: "activity", own: true, short: "your own 7-day average (±20%)",
+      ref: "Compared with your own 7-day average. The mission exercise plan is not loaded."
+    }
+  };
+
+  const SYSTEMS = [
+    { id: "mind", name: "Sleep & mood", ids: ["sleep", "mood", "stress"], note: "Sleep, mood and stress from your Daily check-in." },
+    { id: "resp", name: "Respiratory", ids: ["spo2", "rr"], note: "Oxygen saturation and breathing rate." },
+    { id: "cardio", name: "Cardiovascular", ids: ["hr", "bp", "ecg"], note: "Heart rate, blood pressure and ECG recordings." },
+    { id: "fluids", name: "Fluids & temperature", ids: ["temp", "water"], note: "Body temperature, with water intake from your Daily check-in." },
+    { id: "muscle", name: "Muscle & bone", ids: ["activity"], note: "Exercise minutes from your Daily check-in." }
+  ];
+  const ALL_IDS = ["hr", "bp", "spo2", "rr", "temp", "ecg", "sleep", "mood", "stress", "water", "activity"];
+
+  const zoneOf = (value, lo, hi) => value < lo ? "below" : value > hi ? "over" : "normal";
+  // Ring percent: the normal range always spans 25–75% of the circle.
+  const percentOf = (value, lo, hi) => Math.min(100, Math.max(3, 25 + (value - lo) / (hi - lo) * 50));
+  const mean = list => list.reduce((sum, n) => sum + n, 0) / list.length;
+
+  function vitalIndicator(id) {
+    const def = VITALS[id];
+    const list = readingsFor(id);
+    const latest = list.at(-1);
+    const status = assess(id, latest);
+    const out = {
+      id, kind: "vital", name: def.name, unit: def.unit, zone: status.key, reason: status.reason, pct: null,
+      bigText: latest ? def.format(latest) : "–",
+      valueText: latest ? `${def.format(latest)} ${def.unit}`.trim() : "no reading",
+      when: latest ? `${ago(latest.at)} · ${latest.source}${latest.sample ? " (sample)" : ""}` : "Not measured",
+      refText: `${def.ref.text}. Source: ${def.ref.source}.`,
+      decimals: def.decimals, bands: def.bands, series: seriesFor(id, Date.now() - WEEK)
+    };
+    if (!latest || def.noAuto) return out;
+    // Draw the ring from the value that is out of range (for example diastolic), else the first.
+    const band = def.bands.find(b => zoneOf(latest.v[b.i], b.lo, b.hi) !== "normal") || def.bands[0];
+    out.pct = percentOf(latest.v[band.i], band.lo, band.hi);
+    const week = list.filter(r => r.at >= Date.now() - WEEK);
+    if (week.length >= 2) {
+      const average = { v: def.series.map((_, i) => Number(mean(week.map(r => r.v[i])).toFixed(def.decimals))) };
+      const problem = def.check(average);
+      out.avgText = `${def.format(average)} ${def.unit}`;
+      out.avgZone = problem ? (problem.startsWith("Above") ? "over" : "below") : "normal";
+    }
+    return out;
+  }
+
+  function routineIndicator(id) {
+    const def = ROUTINE[id];
+    const member = crew();
+    const out = {
+      id, kind: "routine", name: def.name, unit: def.unit, zone: "nodata", pct: null, bigText: "–",
+      valueText: "not recorded", when: "From your Daily check-in", refText: def.ref,
+      decimals: def.decimals || 0, bands: [], series: [{ label: def.name, points: [] }]
+    };
+    if (!member.journalOwner) {
+      out.reason = `The routine journal on this device is not linked to ${member.name}.`;
+      return out;
+    }
+    const journal = routineByDate();
+    const entries = Object.values(journal)
+      .filter(e => e[def.field] !== null && e[def.field] !== undefined && e[def.field] !== "")
+      // Plot each check-in at midday, but never later than now.
+      .map(e => ({ t: Math.min(new Date(`${e.date}T12:00`).getTime(), Date.now()), v: Number(e[def.field]), date: e.date }))
+      .filter(e => Number.isFinite(e.v) && e.t >= Date.now() - WEEK).sort((a, b) => a.t - b.t);
+    out.series[0].points = entries;
+    const today = localDate();
+    const current = entries.findLast(e => e.date === today || e.date === dateKey(Date.now() - DAY));
+    if (!current) {
+      out.reason = journal[today] ? "Not recorded in today's check-in." : "No check-in for today yet.";
+      return out;
+    }
+    out.bigText = String(current.v);
+    out.valueText = `${current.v} ${def.unit}`;
+    out.when = `${current.date === today ? "Today's" : "Yesterday's"} check-in`;
+    let lo = def.lo;
+    let hi = def.hi;
+    if (def.own) {
+      const earlier = entries.filter(e => e !== current);
+      const average = earlier.length ? mean(earlier.map(e => e.v)) : 0;
+      if (earlier.length < 3 || average <= 0) {
+        out.reason = "Needs 3 earlier check-ins to compare with your average.";
+        return out;
+      }
+      lo = average * 0.8;
+      hi = average * 1.2;
+      out.avgText = `${Math.round(average)} ${def.unit}`;
+    } else if (entries.length >= 2) {
+      const average = mean(entries.map(e => e.v));
+      out.avgText = `${average.toFixed(1)} ${def.unit}`;
+      out.avgZone = zoneOf(average, lo, hi);
+    }
+    out.bands = [{ lo, hi, i: 0 }];
+    out.zone = zoneOf(current.v, lo, hi);
+    out.pct = percentOf(current.v, lo, hi);
+    out.reason = out.zone === "normal" ? `Inside ${def.short}.` : `${out.zone === "below" ? "Below" : "Above"} ${def.short}.`;
+    return out;
+  }
+
+  const indicator = id => VITALS[id] ? vitalIndicator(id) : routineIndicator(id);
+  const flagged = x => x.zone === "below" || x.zone === "over";
+
   /* ---------- Recommendations ---------- */
 
-  // Prototype rule set: prompts to recheck, complete data or contact the medical
+  // Prototype rule set. Each rule looks at the current test, its 7-day average and
+  // related indicators (temperature, mood, stress, fluids, sleep, symptoms). It only
+  // prompts to recheck, complete data, follow the mission plan or contact the medical
   // team. Replace with mission-approved guidance before operational use.
   function buildRecommendations() {
     const list = [];
+    const all = Object.fromEntries(ALL_IDS.map(id => [id, indicator(id)]));
     const recentSymptoms = symptomsFor().filter(s => Date.now() - s.at < DAY);
-    ORDER.forEach(type => {
-      const def = VITALS[type];
-      const latest = readingsFor(type).at(-1);
-      const status = assess(type, latest);
-      const lower = def.name === "ECG" || def.name === "SpO₂" ? def.name : def.name.toLowerCase();
-      if (status.key === "outside") {
-        const related = recentSymptoms.find(s => s.name === def.symptom);
-        const why = [
-          `${def.name} ${def.format(latest)} ${def.unit} · ${formatTime(latest.at)} · ${latest.source}`,
-          `General adult reference: ${def.ref.text}`
-        ];
-        if (related) why.push(`${related.name} logged ${formatTime(related.at)}, strength ${related.severity}/5`);
+    const used = new Set();
+    const lower = x => ["ECG", "SpO₂"].includes(x.name) ? x.name : x.name.toLowerCase();
+    const word = zone => STATUS[zone].label.toLowerCase();
+    const line = x => `${x.name} now ${x.valueText} (${word(x.zone)})` +
+      (x.avgText ? ` · 7-day average ${x.avgText}${x.avgZone ? ` (${word(x.avgZone)})` : ""}` : "");
+    const symptomLine = name => {
+      const s = recentSymptoms.find(item => item.name === name);
+      return s ? `${s.name} logged ${formatTime(s.at)}, strength ${s.severity}/5` : null;
+    };
+    const measure = id => ["Measure again", () => openDetail(id), "medical"];
+    const checkin = ["Open check-in", () => setView("checkin"), "routines"];
+    const { bp, hr, temp, water, sleep, mood, stress } = all;
+
+    // Blood pressure together with body fluids and dizziness.
+    if (bp.zone === "below" && water.zone !== "normal" && water.zone !== "over") {
+      list.push({
+        title: "Check your fluids, then recheck blood pressure",
+        action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it stays below the reference or you feel dizzy, contact the medical team using your mission procedure.",
+        why: [line(bp), water.zone === "nodata" ? "Water: not recorded in the Daily check-in" : line(water), symptomLine("Dizziness")],
+        button: measure("bp")
+      });
+      used.add("bp").add("water");
+    }
+    // Temperature together with heart rate.
+    const baseHr = crew().baselineValue.hr;
+    const hrNow = readingsFor("hr").at(-1);
+    const hrRaised = hr.zone === "over" || (hrNow && baseHr && hrNow.v[0] - baseHr >= 15);
+    if (temp.zone === "over" && hrRaised) {
+      list.push({
+        title: "Recheck temperature and heart rate together",
+        action: "Rest for 15 minutes, then repeat both. If both are still raised, contact the medical team using your mission procedure.",
+        why: [line(temp), line(hr), baseHr ? `Heart rate baseline ${baseHr} bpm` : null, symptomLine("Unusual tiredness")],
+        button: measure("temp")
+      });
+      used.add("temp").add("hr");
+    }
+    // Mood and stress together with sleep.
+    const shortSleep = sleep.zone === "below" || sleep.avgZone === "below";
+    if ((mood.zone === "below" || stress.zone === "over") && shortSleep) {
+      list.push({
+        title: "Protect your sleep window",
+        action: "Low mood or high stress is showing alongside short sleep. Keep to your scheduled sleep period tonight. If this continues for several days, talk to the medical team using your mission procedure.",
+        why: [line(mood), line(stress), line(sleep)],
+        button: checkin
+      });
+      used.add("mood").add("stress").add("sleep");
+    }
+    // Every other indicator: compare the current test with its 7-day average.
+    ALL_IDS.forEach(id => {
+      const x = all[id];
+      if (used.has(id)) return;
+      const vital = x.kind === "vital";
+      if (flagged(x) && x.avgZone === x.zone) {
         list.push({
-          title: `Recheck your ${lower}`,
-          action: related ?
-            "Repeat the measurement using the steps shown. If the repeat is also outside the reference, or the symptom continues, contact the medical team using your mission procedure." :
-            "Repeat the measurement using the steps shown. If it is still outside the reference, contact the medical team using your mission procedure.",
-          why, target: "medical", button: ["Measure again", () => openDetail(type)]
+          title: `${x.name} has stayed ${x.zone === "below" ? "below" : "over"} the normal range`,
+          action: "The current result and the 7-day average are both outside the normal range. Contact the medical team using your mission procedure.",
+          why: [line(x), `Reference: ${x.refText}`, symptomLine(VITALS[id]?.symptom)],
+          button: vital ? measure(id) : checkin
         });
-        const match = related && GROUPS.find(g => g.vitals.includes(type) && g.symptom === related.name);
-        if (match) {
-          list.push({
-            title: `Look at ${lower} next to your routine`,
-            action: "See these readings beside your sleep, activity, water and symptoms, so you can describe the full picture to the medical team.",
-            why: [why[0], why[2]], target: "both", button: ["View together", () => openRelated(match.id)]
-          });
-        }
-      }
-      if (status.key === "recheck") {
+      } else if (flagged(x)) {
         list.push({
-          title: `Take a new ${lower} reading`,
-          action: "A fresh reading is needed before this result can be compared with a reference.",
-          why: [status.reason, `Last reading: ${def.format(latest)} ${def.unit} · ${formatTime(latest.at)} · ${latest.source}`],
-          target: "medical", button: ["Measure now", () => openDetail(type)]
+          title: vital ? `Recheck your ${lower(x)}` : `${x.name} is ${x.zone === "below" ? "below" : "over"} your normal range`,
+          action: vital ?
+            "This result differs from your 7-day average. Repeat the measurement using the steps shown. If it is still outside the normal range, contact the medical team using your mission procedure." :
+            "Follow your mission plan today and log it in the Daily check-in. If it continues for several days, tell the medical team.",
+          why: [line(x), `Reference: ${x.refText}`, symptomLine(VITALS[id]?.symptom)],
+          button: vital ? measure(id) : checkin
+        });
+      } else if (x.zone === "normal" && x.avgZone && x.avgZone !== "normal") {
+        list.push({
+          title: `Keep watching your ${lower(x)}`,
+          action: `The current result is normal, but the 7-day average is ${x.avgZone === "below" ? "below" : "over"} the normal range. Keep recording it daily so the medical team can see whether it settles.`,
+          why: [line(x), `Reference: ${x.refText}`],
+          button: vital ? measure(id) : checkin
+        });
+      } else if (x.zone === "recheck") {
+        list.push({
+          title: `Take a new ${lower(x)} reading`,
+          action: "A fresh reading is needed before this result can be compared with the normal range.",
+          why: [x.reason, `Last reading: ${x.valueText} · ${x.when}`],
+          button: ["Measure now", () => openDetail(id), "medical"]
         });
       }
     });
@@ -485,51 +661,58 @@
         title: `Tell the medical team about your ${s.name.toLowerCase()}`,
         action: "You rated this symptom strong or severe. Contact the medical team now using your mission procedure. This app does not judge urgency.",
         why: [`${s.name} logged ${formatTime(s.at)}, strength ${s.severity}/5`],
-        target: "both", button: ["Open case summary", () => openTab("summary")]
+        button: ["Open case summary", () => openTab("summary"), "medical"]
       });
     });
     if (crew().journalOwner && !routineByDate()[localDate()]) {
       list.push({
         title: "Complete today's check-in",
-        action: "Sleep, activity and water help put your measurements in context.",
-        why: [`No routine check-in saved for today (${localDate()})`],
-        target: "routines", button: ["Open check-in", () => setView("checkin")]
+        action: "Sleep, mood, stress, water and exercise feed the Medical view and its recommendations.",
+        why: [`No Daily check-in saved for today (${localDate()})`],
+        button: checkin
       });
     }
     return list;
   }
 
-  const TARGET_LABEL = { medical: "Shown in: Medical view", routines: "Shown in: Routines", both: "Shown in: Medical view and Routines" };
-
+  // The same list is shown in the Medical view and in the Daily check-in.
   function recommendationCard(item, inRoutines) {
-    const body = h("div", {},
-      h("div", { class: "med-reco-tags" },
-        h("span", { class: "tag", text: TARGET_LABEL[item.target] }),
-        h("span", { class: "med-rule", text: "Prototype rule · not yet mission-approved" })),
-      h("h3", { text: item.title }),
-      h("p", { text: item.action }),
-      h("div", { class: "med-why-title", text: "Prompted by" }),
-      h("ul", { class: "med-why" }, ...item.why.filter(Boolean).map(line => h("li", { text: line }))));
+    const [label, run, view] = item.button;
     let button = null;
     if (!inRoutines) {
-      button = h("button", { class: "secondary", type: "button", text: item.button[0], onclick: item.button[1] });
-    } else if (item.target === "both") {
+      button = h("button", { class: "secondary", type: "button", text: label, onclick: run });
+    } else if (view === "medical") {
       button = h("button", {
         class: "secondary", type: "button", text: "Open in Medical view",
-        onclick: () => { setView("medical"); item.button[1](); }
+        onclick: () => { setView("medical"); run(); }
       });
     }
-    return h("article", { class: "med-reco" }, body, button);
+    return h("article", { class: "med-reco" },
+      h("div", {},
+        h("h3", { text: item.title }),
+        h("p", { text: item.action }),
+        h("div", { class: "med-why-title", text: "Prompted by" }),
+        h("ul", { class: "med-why" }, ...item.why.filter(Boolean).map(text => h("li", { text })))),
+      button);
   }
+
+  const RULE_NOTE = "Prototype rules, not yet mission-approved. Decision support only, never a diagnosis.";
+
+  let stripOpen = false;
 
   function renderRoutineStrip() {
     const box = $("#routine-recos");
-    const items = buildRecommendations().filter(item => item.target !== "medical");
+    const items = buildRecommendations();
     box.replaceChildren();
     box.hidden = !items.length;
     if (!items.length) return;
-    box.append(h("h2", { class: "med-h2", text: `From the Medical view · ${crew().name}` }),
-      ...items.map(item => recommendationCard(item, true)));
+    const details = h("details", { class: "med-profile", open: stripOpen },
+      h("summary", {}, `${items.length} recommendation${items.length > 1 ? "s" : ""} `,
+        h("span", { text: `· ${crew().name} · same list as the Medical view` })),
+      ...items.map(item => recommendationCard(item, true)),
+      h("p", { class: "med-quiet med-rule-note", text: RULE_NOTE }));
+    details.addEventListener("toggle", () => { stripOpen = details.open; });
+    box.append(details);
   }
 
   /* ---------- Navigation inside the Medical view ---------- */
@@ -580,42 +763,86 @@
     $("#med-updated").textContent = `Updated ${new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" })}`;
   }
 
-  function vitalCard(type) {
-    const def = VITALS[type];
-    const list = readingsFor(type);
-    const latest = list.at(-1);
-    const status = assess(type, latest);
-    const trend = trendOf(type, list);
-    const from = Date.now() - WEEK;
-    const value = latest ?
-      h("div", { class: "med-value" }, def.format(latest), def.unit ? h("small", { text: def.unit }) : null) :
-      h("div", { class: "med-value is-empty", text: "No reading" });
-    const facts = h("dl", { class: "med-facts" },
-      h("dt", { text: "Measured" }), h("dd", { text: latest ? `${formatTime(latest.at)} · ${ago(latest.at)}` : "Not measured" }),
-      h("dt", { text: "Source" }), h("dd", { text: latest ? latest.source + (latest.sample ? " (sample)" : "") : "–" }));
-    const spark = def.noTrend || list.length < 2 ? null : chart({
-      series: [seriesFor(type, from)[0]], from, to: Date.now(), width: 110, height: 34, axes: false,
-      label: `${def.name} trend: ${trend.text}`
+  // Percent circle. Numbers only reach this markup.
+  function ring(x) {
+    const radius = 25;
+    const length = 2 * Math.PI * radius;
+    const wrap = h("span", { class: `med-ring med-ring-${x.zone}`, "aria-hidden": "true" });
+    wrap.innerHTML = `<svg viewBox="0 0 64 64" width="64" height="64">` +
+      `<circle class="med-ring-track" cx="32" cy="32" r="${radius}"/>` +
+      (x.pct === null ? "" : `<circle class="med-ring-fill" cx="32" cy="32" r="${radius}" ` +
+        `stroke-dasharray="${(length * x.pct / 100).toFixed(1)} ${length.toFixed(1)}" transform="rotate(-90 32 32)"/>`) +
+      `<text class="med-ring-text" x="32" y="37" text-anchor="middle">${x.pct === null ? "–" : `${Math.round(x.pct)}%`}</text></svg>`;
+    return wrap;
+  }
+
+  function ringCard(x) {
+    return h("button", {
+        class: `med-ring-card${picked === x.id ? " is-picked" : ""}`, type: "button",
+        "aria-pressed": picked === x.id ? "true" : "false",
+        onclick: () => { picked = x.id; render(); }
+      },
+      ring(x),
+      h("span", { class: "med-ring-body" },
+        h("span", { class: "med-ring-name", text: x.name }),
+        h("span", { class: "med-ring-value" }, x.bigText, x.unit && x.bigText !== "–" ? h("small", { text: x.unit }) : null),
+        pill(x.zone)),
+      h("span", { class: "med-ring-foot" },
+        h("span", { text: x.reason }),
+        h("span", { text: x.avgText ? `7-day average ${x.avgText}${x.avgZone ? ` · ${STATUS[x.avgZone].label}` : ""}` : "7-day average: not enough results" }),
+        h("span", { text: x.when })));
+  }
+
+  // Worst zone across a body system's indicators.
+  function systemZone(item, all) {
+    const zones = item.ids.map(id => all[id].zone);
+    return ["below", "over", "recheck"].find(zone => zones.includes(zone)) ||
+      (zones.includes("normal") ? "normal" : "nodata");
+  }
+
+  const BODY_MARKS = {
+    mind: [110, 34, "SLEEP / MOOD"], resp: [93, 112, "RESPIRATORY"], cardio: [120, 128, "CARDIO"],
+    fluids: [110, 178, "FLUIDS / TEMP"], muscle: [86, 256, "MUSCLE / BONE"]
+  };
+
+  function bodyFigure(all) {
+    const on = id => system === id ? " is-on" : "";
+    let marks = "";
+    SYSTEMS.forEach(item => {
+      const [x, y, label] = BODY_MARKS[item.id];
+      const zone = systemZone(item, all);
+      marks += `<g class="med-mark med-mark-${zone}${on(item.id)}" data-system="${item.id}" role="button" tabindex="0" ` +
+        `aria-pressed="${system === item.id}" aria-label="${item.name}: ${STATUS[zone].label}">` +
+        `<line x1="${x + 10}" y1="${y}" x2="194" y2="${y}"/><circle class="med-mark-halo" cx="${x}" cy="${y}" r="10"/>` +
+        `<circle class="med-mark-core" cx="${x}" cy="${y}" r="4.5"/>` +
+        `<text x="199" y="${y + 4}">${label} ${STATUS[zone].icon}</text></g>`;
     });
-    const limit = MISSION_LIMITS[type];
-    return h("article", { class: `med-card${detailType === type ? " is-open" : ""}` },
-      h("div", { class: "med-card-head" },
-        h("h3", {}, h("span", { "aria-hidden": "true", text: `${def.icon} ` }), def.name), pill(status.key)),
-      value,
-      h("p", { class: "med-reason", text: status.reason }),
-      facts,
-      h("div", { class: "med-trend" },
-        h("span", {}, h("b", { "aria-hidden": "true", text: trend.icon }), `Trend: ${trend.text}`), spark),
-      h("div", { class: "med-refs" },
-        h("div", {}, h("b", { text: "General healthy-adult reference" }), `${def.ref.text}. Source: ${def.ref.source}.`),
-        h("div", { class: "med-limit" }, h("b", { text: "Mission-approved alert limit" }),
-          limit || "Not loaded. Supplied by the mission medical team."),
-        def.noTrend ? null : h("div", {}, h("b", { text: "Your baseline" }), baselineNote(type, latest))),
-      h("button", {
-        class: "secondary", type: "button",
-        text: def.noAuto ? "Details & how to record" : "Details & measure",
-        onclick: () => openDetail(type)
-      }));
+    const wrap = h("div", { class: "med-body" });
+    wrap.innerHTML = `<svg viewBox="34 4 286 388" role="group" aria-label="Body systems. Select one to filter the current tests.">` +
+      `<ellipse class="med-skin" cx="110" cy="38" rx="22" ry="27"/>` +
+      `<path class="med-skin" d="M96 68 L124 68 C132 78 150 80 158 90 C166 100 168 120 170 150 L176 200 C178 214 166 216 164 204 L156 150 L152 118 L150 170 C150 190 154 200 154 214 L150 290 L146 372 C146 384 124 384 124 372 L122 300 L114 226 L110 222 L106 226 L98 300 L96 372 C96 384 74 384 74 372 L70 290 L66 214 C66 200 70 190 70 170 L68 118 L64 150 L56 204 C54 216 42 214 44 200 L50 150 C52 120 54 100 62 90 C70 80 88 78 96 68 Z"/>` +
+      `<path class="med-organ${on("mind")}" d="M94 34 C94 18 126 18 126 34 C126 44 118 46 110 46 C102 46 94 44 94 34 Z M110 20 L110 46"/>` +
+      `<path class="med-organ${on("resp")}" d="M104 96 C92 98 84 112 84 134 C92 140 102 138 104 132 Z M116 96 C128 98 136 112 136 134 C128 140 118 138 116 132 Z M110 86 L110 100"/>` +
+      `<path class="med-organ${on("cardio")}" d="M120 138 C108 130 108 118 116 118 C119 118 120 121 120 122 C120 121 122 118 125 118 C132 118 132 130 120 138 Z"/>` +
+      `<path class="med-organ${on("fluids")}" d="M110 162 C118 172 122 178 122 184 C122 191 117 196 110 196 C103 196 98 191 98 184 C98 178 102 172 110 162 Z"/>` +
+      `<path class="med-organ${on("muscle")}" d="M82 230 C80 226 86 224 86 229 C87 224 93 226 90 231 L89 281 C93 285 87 289 86 284 C85 289 79 285 83 281 Z"/>` +
+      marks + `</svg>`;
+    const choose = event => {
+      const mark = event.target.closest("[data-system]");
+      if (!mark || (event.type === "keydown" && !["Enter", " "].includes(event.key))) return;
+      event.preventDefault();
+      pickSystem(mark.dataset.system);
+    };
+    wrap.addEventListener("click", choose);
+    wrap.addEventListener("keydown", choose);
+    return wrap;
+  }
+
+  function pickSystem(id) {
+    system = system === id ? null : id;
+    const visible = system ? SYSTEMS.find(item => item.id === system).ids : ALL_IDS;
+    if (!visible.includes(picked)) picked = visible[0];
+    render();
   }
 
   function readingForm(type) {
@@ -681,7 +908,7 @@
     const def = VITALS[type];
     const from = Date.now() - WEEK;
     const list = readingsFor(type);
-    const width = $("#med-cards").clientWidth - 92;
+    const width = box.clientWidth - 62;
     const rows = list.slice(-6).reverse().map(r => [
       `${def.format(r)} ${def.unit}`.trim(), `${formatTime(r.at)} · ${ago(r.at)}`,
       r.source + (r.sample ? " (sample)" : ""),
@@ -723,38 +950,100 @@
 
   function renderDashboard() {
     const member = crew();
+    const all = Object.fromEntries(ALL_IDS.map(id => [id, indicator(id)]));
+    const current = system && SYSTEMS.find(item => item.id === system);
+    const visible = current ? current.ids : ALL_IDS;
+    if (!visible.includes(picked)) picked = visible[0];
+
+    // Body systems: the figure and a matching list of buttons.
+    $("#med-body").replaceChildren(bodyFigure(all));
+    $("#med-systems").replaceChildren(
+      h("p", { class: "med-quiet", text: current ? current.note : "Tap a marker or a system to filter the current tests." }),
+      ...SYSTEMS.map(item => h("button", {
+          class: `med-system${system === item.id ? " is-on" : ""}`, type: "button",
+          "aria-pressed": system === item.id ? "true" : "false", onclick: () => pickSystem(item.id)
+        },
+        h("span", { text: item.name }), pill(systemZone(item, all)))));
+
+    // Current tests as percent circles.
+    $("#med-cards-title").textContent = current ? `Current tests · ${current.name}` : "Current tests";
+    $("#med-cards-sub").textContent = member.name.toUpperCase();
+    $("#med-cards").replaceChildren(...visible.map(id => ringCard(all[id])));
+
+    // 7-day trend for the picked test.
+    const x = all[picked];
+    const points = x.series.reduce((count, s) => count + s.points.length, 0);
+    const trendBox = $("#med-trend");
+    trendBox.replaceChildren(
+      h("div", { class: "med-pane-head" },
+        h("h3", {}, "7-day trend · ", h("b", { text: x.name })),
+        h("button", {
+          class: "med-link", type: "button",
+          text: x.kind === "vital" ? (VITALS[x.id].fields ? "Details & measure" : "How to record") : "Open check-in",
+          onclick: () => x.kind === "vital" ? openDetail(x.id) : setView("checkin")
+        })));
+    trendBox.append(
+      chart({
+        series: x.series, bands: x.bands, from: Date.now() - WEEK, to: Date.now(),
+        width: trendBox.clientWidth, height: 150, decimals: x.decimals,
+        label: `${x.name}, last 7 days: ${points} result${points === 1 ? "" : "s"}, latest ${x.valueText}.`
+      }),
+      h("p", { class: "med-chart-key", text: `${x.bands.length ? "Shaded band = normal range. " : ""}${x.refText}` }));
+
+    // Quick assessment and recommendations (same list as the Daily check-in).
+    const results = ALL_IDS.filter(id => id !== "ecg").map(id => all[id]);
+    const out = results.filter(flagged);
+    const open = results.filter(r => r.zone === "recheck" || r.zone === "nodata");
+    const banner = out.length ? ["over", "▲", `${out.length} result${out.length > 1 ? "s" : ""} outside the normal range`, out.map(r => r.name).join(", ")] :
+      open.length ? ["nodata", "?", "Some results are missing or need a recheck", open.map(r => r.name).join(", ")] :
+      ["normal", "✓", "Looking good", "All current results are in the normal range."];
     const recommendations = buildRecommendations();
-    const here = recommendations.filter(item => item.target !== "routines");
-    const elsewhere = recommendations.length - here.length;
     $("#med-recos").replaceChildren(
-      ...(here.length ? here.map(item => recommendationCard(item, false)) :
+      h("div", { class: `med-banner med-banner-${banner[0]}` },
+        h("span", { class: "med-banner-icon", "aria-hidden": "true", text: banner[1] }),
+        h("span", {}, h("b", { text: banner[2] }), h("span", { text: banner[3] }))),
+      ...(recommendations.length ? recommendations.map(item => recommendationCard(item, false)) :
         [h("p", { class: "med-quiet", text: `No recommendations for ${member.name} right now.` })]),
-      elsewhere ? h("p", { class: "med-quiet" }, `${elsewhere} more in Routines. `,
-        h("button", { class: "med-link", type: "button", text: "Open Daily check-in", onclick: () => setView("checkin") })) : null);
+      h("p", { class: "med-quiet med-rule-note", text: RULE_NOTE }),
+      h("div", { class: "med-call" },
+        h("b", { text: "Contact the medical team" }),
+        h("span", { text: "For severe chest pain, trouble breathing, fainting, confusion or any rapidly worsening symptom, contact the medical team immediately using your mission procedure." })));
 
-    $("#med-cards-title").textContent = `Latest measurements · ${member.name}`;
-    $("#med-legend").replaceChildren(...Object.keys(STATUS).map(key => h("li", {}, pill(key))));
-    $("#med-cards").replaceChildren(...ORDER.map(vitalCard));
+    // Record a new check-in.
+    const next = ["bp", "hr", "spo2", "rr", "temp"].find(id => all[id].zone !== "normal") || "bp";
+    $("#med-record").replaceChildren(
+      h("div", {},
+        h("h2", { text: "Record a new check-in" }),
+        h("p", { class: "med-quiet", text: "Enter today's measurements and how you are feeling." })),
+      h("div", { class: "med-record-actions" },
+        h("button", { class: "primary", type: "button", text: "+ Log measurements", onclick: () => openDetail(next) }),
+        h("button", { class: "secondary", type: "button", text: "Daily check-in", onclick: () => setView("checkin") }),
+        h("button", { class: "secondary", type: "button", text: "Log a symptom", onclick: () => openTab("symptoms") })));
+
+    // Daily health routine: what is done today across both views.
+    const fresh = ["bp", "hr", "spo2", "rr", "temp"].filter(id => {
+      const latest = readingsFor(id).at(-1);
+      return latest && Date.now() - latest.at < DAY;
+    }).length;
+    const entry = member.journalOwner ? routineByDate()[localDate()] : null;
+    const logged = value => value !== null && value !== undefined && value !== "";
+    const unlinked = member.journalOwner ? null : "Journal not linked";
+    const tasks = [
+      ["Vitals check", fresh === 5, `${fresh} of 5 measured in the last 24 h`],
+      ["Sleep & mood", Boolean(entry), unlinked || (entry ? "Check-in saved today" : "Check-in not saved yet")],
+      ["Exercise", Boolean(entry) && logged(entry.activity), unlinked || (entry && logged(entry.activity) ? `${entry.activity} min logged` : "Not logged today")],
+      ["Fluids", Boolean(entry) && logged(entry.water), unlinked || (entry && logged(entry.water) ? `${entry.water} mL logged` : "Not logged today")]
+    ];
+    $("#med-routine").replaceChildren(
+      h("div", { class: "med-pane-head" },
+        h("h2", { text: "Daily health routine" }),
+        h("span", { text: `${tasks.filter(task => task[1]).length} / ${tasks.length} DONE` })),
+      h("div", { class: "med-tasks" }, ...tasks.map(([name, done, text]) =>
+        h("div", { class: `med-task${done ? " is-done" : ""}` },
+          h("b", {}, h("span", { "aria-hidden": "true", text: done ? "✓ " : "○ " }), name),
+          h("span", { text: `${done ? "Done" : "To do"} · ${text}` })))));
+
     renderDetail();
-
-    const missing = [];
-    ORDER.forEach(type => {
-      if (!readingsFor(type).length) {
-        missing.push([`No ${VITALS[type].name} reading on file.`, VITALS[type].fields ? "Measure now" : "How to record", () => openDetail(type)]);
-      }
-    });
-    if (!member.journalOwner) {
-      missing.push([`The routine journal on this device is not linked to ${member.name}, so sleep, activity and water are unavailable.`]);
-    } else if (!routineByDate()[localDate()]) {
-      missing.push(["No routine check-in saved for today.", "Open check-in", () => setView("checkin")]);
-    }
-    if (!symptomsFor().some(s => Date.now() - s.at < DAY)) {
-      missing.push(["No symptoms logged in the last 24 hours. Log one only if you notice something.", "Log a symptom", () => openTab("symptoms")]);
-    }
-    missing.push(["Meals are not tracked in Routines yet, so nutrition cannot be shown beside your measurements."]);
-    $("#med-missing").replaceChildren(...missing.map(([text, label, run]) => h("div", { class: "med-missing" },
-      h("span", {}, h("span", { "aria-hidden": "true", text: "? " }), text),
-      label ? h("button", { class: "secondary", type: "button", text: label, onclick: run }) : null)));
 
     $("#med-tests").replaceChildren(table(["Test", "Result", "Measured", "Source / device", "Trend", "Status"],
       SAMPLE_TESTS[member.id].map(test => [
@@ -948,6 +1237,7 @@
   crewSelect.addEventListener("change", () => {
     store.activeCrew = crewSelect.value;
     detailType = null;
+    system = null;
     if (storeReady) saveStore();
     render();
     renderRoutineStrip();

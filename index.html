@@ -501,7 +501,7 @@
     </details>
     <fieldset class="phase med-tabs">
      <legend>Section</legend>
-     <label><input checked="" name="medtab" type="radio" value="dash"/><span>Dashboard</span></label>
+     <label><input checked="" name="medtab" type="radio" value="dash"/><span>Overview</span></label>
      <label><input name="medtab" type="radio" value="related"/><span>Related indicators</span></label>
      <label><input name="medtab" type="radio" value="symptoms"/><span>Symptoms</span></label>
      <label><input name="medtab" type="radio" value="summary"/><span>Case summary</span></label>
@@ -512,14 +512,32 @@
     </p>
 
     <div data-med-tab="dash">
-     <h2 class="med-h2">Recommendations</h2>
-     <div id="med-recos"></div>
-     <h2 class="med-h2" id="med-cards-title">Latest measurements</h2>
-     <ul aria-label="Status key" class="med-legend" id="med-legend"></ul>
-     <div class="med-grid" id="med-cards"></div>
+     <div class="med-overview">
+      <section class="med-pane med-pane-body">
+       <div class="med-pane-head"><h2>Body systems</h2><span>SELECT TO EXPLORE</span></div>
+       <div id="med-body"></div>
+       <div id="med-systems"></div>
+      </section>
+      <section class="med-pane med-pane-cards">
+       <div class="med-pane-head"><h2 id="med-cards-title">Current tests</h2><span id="med-cards-sub"></span></div>
+       <p class="med-ring-key">
+        Each circle shows where the result sits. 25–75% is the normal range:
+        <b class="med-key-below">▼ below is red</b>, <b class="med-key-normal">✓ normal is green</b>,
+        <b class="med-key-over">▲ over is orange</b>. Tap a test to see its 7-day trend.
+       </p>
+       <div class="med-rings" id="med-cards"></div>
+       <div id="med-trend"></div>
+      </section>
+      <section class="med-pane med-pane-quick">
+       <div class="med-pane-head"><h2>Quick assessment</h2><span>SHOWN IN BOTH VIEWS</span></div>
+       <div id="med-recos"></div>
+      </section>
+     </div>
+     <div class="med-bottom">
+      <section class="med-pane med-record" id="med-record"></section>
+      <section class="med-pane" id="med-routine"></section>
+     </div>
      <div id="med-detail"></div>
-     <h2 class="med-h2">Missing data</h2>
-     <div id="med-missing"></div>
      <h2 class="med-h2">Medical tests</h2>
      <div id="med-tests"></div>
     </div>

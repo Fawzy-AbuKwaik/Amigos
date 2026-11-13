@@ -24,5 +24,10 @@ conditions. Export JSON for backup. No JSON import is implemented.
 - Readings and symptoms you add are stored under the amigos-medical-v1 key.
 - Statuses compare readings with general healthy-adult references (sources shown on
   each card). Mission-approved alert limits are not bundled: fill MISSION_LIMITS.
-- Recommendations come from a prototype rule set that is not mission-approved.
+- The Overview shows a body-systems figure and one percent circle per current test:
+  25-75% is the normal range; below is red, normal is green, over is orange.
+- Sleep, mood, stress, water and exercise come from the Daily check-in journal.
+- Recommendations use the current test, its 7-day average and related indicators.
+  The same list appears in the Medical view and the Daily check-in. They come from
+  a prototype rule set that is not mission-approved.
 - The routine journal is linked to the crew member marked journalOwner.
