@@ -189,7 +189,12 @@ document.querySelector("#back-button").addEventListener("click", () => showStep(
 function setView(view) {
   document.querySelector("#checkin-view").hidden = view !== "checkin";
   document.querySelector("#history-view").hidden = view !== "history";
-  document.querySelector("#header-view").textContent = view === "checkin" ? "DAILY CHECK-IN" : "MY JOURNAL";
+  document.querySelector("#medical-view").hidden = view !== "medical";
+  document.querySelector("#header-view").textContent = {
+    checkin: "DAILY CHECK-IN",
+    history: "MY JOURNAL",
+    medical: "MEDICAL VIEW"
+  } [view];
   document.querySelectorAll(".nav").forEach(button => {
     const active = button.dataset.view === view;
     button.classList.toggle("active", active);
@@ -197,6 +202,10 @@ function setView(view) {
     else button.removeAttribute("aria-current");
   });
   if (view === "history") renderHistory();
+  // Lets the Medical view (js/medical.js) refresh when the view changes.
+  document.dispatchEvent(new CustomEvent("amigos:view", {
+    detail: view
+  }));
   window.scrollTo({
     top: 0,
     behavior: "auto"

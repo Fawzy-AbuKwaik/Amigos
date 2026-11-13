@@ -9,6 +9,7 @@
   </title>
   <meta content="A simple daily routine check-in for crew wellbeing." name="description"/>
   <link href="css/style.css" rel="stylesheet"/>
+  <link href="css/medical.css" rel="stylesheet"/>
  </head>
  <body>
   <!-- Navigation stays separate from the form on smaller screens. -->
@@ -50,6 +51,12 @@
      <span class="nav-end count" id="count">
       0
      </span>
+    </button>
+    <button class="nav" data-view="medical" type="button">
+     <span aria-hidden="true">
+      ✚
+     </span>
+     Medical view
     </button>
    </nav>
    <div class="sidebar-bottom">
@@ -108,6 +115,9 @@
      </div>
      <div class="date-badge" id="today-label">
      </div>
+    </div>
+    <!-- Routine-related recommendations from the Medical view appear here. -->
+    <div hidden="" id="routine-recos">
     </div>
     <!-- Required fields are validated within each step, never while hidden. -->
     <form id="routine-form" novalidate="">
@@ -468,10 +478,114 @@
      Self-reported entries. No clinical score or diagnosis.
     </p>
    </section>
+   <!-- Medical view: self-assessment and decision support, never a diagnosis. Rendered by js/medical.js. -->
+   <section aria-labelledby="medical-heading" hidden="" id="medical-view">
+    <div class="intro">
+     <div>
+      <p class="eyebrow">YOUR HEALTH, IN CONTEXT</p>
+      <h1 id="medical-heading">Medical view</h1>
+      <p>Self-assessment and decision support. This view does not diagnose.</p>
+     </div>
+     <div class="date-badge" id="med-updated"></div>
+    </div>
+    <div class="context-panel med-crew">
+     <label class="date-label med-crew-label">
+      Active crew member
+      <select id="med-crew"></select>
+     </label>
+     <div aria-live="polite" class="med-identity" id="med-identity"></div>
+    </div>
+    <details class="med-profile">
+     <summary>Health profile <span id="med-profile-name"></span></summary>
+     <div class="metrics" id="med-profile-body"></div>
+    </details>
+    <fieldset class="phase med-tabs">
+     <legend>Section</legend>
+     <label><input checked="" name="medtab" type="radio" value="dash"/><span>Dashboard</span></label>
+     <label><input name="medtab" type="radio" value="related"/><span>Related indicators</span></label>
+     <label><input name="medtab" type="radio" value="symptoms"/><span>Symptoms</span></label>
+     <label><input name="medtab" type="radio" value="summary"/><span>Case summary</span></label>
+    </fieldset>
+    <p class="med-sample-note">
+     <span aria-hidden="true">▣</span>
+     Prototype: crew profiles and device readings are sample data. Readings and symptoms you add are saved on this browser only.
+    </p>
+
+    <div data-med-tab="dash">
+     <h2 class="med-h2">Recommendations</h2>
+     <div id="med-recos"></div>
+     <h2 class="med-h2" id="med-cards-title">Latest measurements</h2>
+     <ul aria-label="Status key" class="med-legend" id="med-legend"></ul>
+     <div class="med-grid" id="med-cards"></div>
+     <div id="med-detail"></div>
+     <h2 class="med-h2">Missing data</h2>
+     <div id="med-missing"></div>
+     <h2 class="med-h2">Medical tests</h2>
+     <div id="med-tests"></div>
+    </div>
+
+    <div data-med-tab="related" hidden="">
+     <h2 class="med-h2">View related indicators together</h2>
+     <fieldset class="phase med-tabs med-groups" id="med-groups">
+      <legend>Choose a group</legend>
+     </fieldset>
+     <div id="med-related"></div>
+    </div>
+
+    <div data-med-tab="symptoms" hidden="">
+     <!-- Not a .step-panel: app.js treats those as check-in steps. -->
+     <form class="med-panel" id="med-symptom-form" novalidate="">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">✎</span>
+       <div>
+        <p class="eyebrow">SYMPTOM ENTRY</p>
+        <h2>How do you feel right now?</h2>
+        <p>Three taps and save. Logged for <b data-med-name=""></b>.</p>
+       </div>
+      </div>
+      <fieldset class="context-field med-first">
+       <legend>What are you noticing?</legend>
+       <div class="chips" id="med-symptom-chips"></div>
+      </fieldset>
+      <fieldset class="rating-field med-gap">
+       <legend>How strong is it?</legend>
+       <div class="rating" data-labels="Very mild,Mild,Moderate,Strong,Severe" data-name="symptomSeverity"></div>
+      </fieldset>
+      <div class="two-column med-gap">
+       <label>
+        When did you notice it?
+        <input name="at" required="" type="datetime-local"/>
+       </label>
+       <label>
+        Note
+        <input maxlength="200" name="note" placeholder="e.g. when standing up" type="text"/>
+        <span class="field-hint">Optional.</span>
+       </label>
+      </div>
+      <div class="med-error" id="med-symptom-error" role="alert"></div>
+      <div class="step-actions">
+       <span id="step-caption-med" class="med-caption">Symptoms are your own report, not a clinical finding.</span>
+       <button class="primary" type="submit">Save symptom <span aria-hidden="true">✓</span></button>
+      </div>
+     </form>
+     <h2 class="med-h2">Recent symptoms</h2>
+     <div id="med-symptom-list"></div>
+    </div>
+
+    <div data-med-tab="summary" hidden="">
+     <div id="med-summary"></div>
+    </div>
+
+    <p class="medical">
+     Decision support only. Statuses compare readings with published general references; they are not a diagnosis and do not replace the mission medical team.
+    </p>
+   </section>
   </main>
   <div hidden="" id="toast" role="status">
   </div>
   <script src="js/app.js">
+  </script>
+  <script src="js/medical.js">
   </script>
  </body>
 </html>
