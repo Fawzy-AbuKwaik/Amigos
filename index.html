@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <meta content="#081724" name="theme-color"/>
+  <title>
+   AMIGOS | Daily check-in
+  </title>
+  <meta content="A simple daily routine check-in for crew wellbeing." name="description"/>
+  <link href="css/style.css" rel="stylesheet"/>
+ </head>
+ <body>
+  <!-- Navigation stays separate from the form on smaller screens. -->
+  <aside class="sidebar">
+   <a aria-label="AMIGOS home" class="brand" href="#">
+    <span aria-hidden="true" class="brand-mark">
+     A
+     <span>
+      +
+     </span>
+    </span>
+    <span>
+     AMIGOS
+     <small>
+      CREW WELLBEING
+     </small>
+    </span>
+   </a>
+   <div class="workspace">
+    <span class="status-dot">
+    </span>
+    YOUR PERSONAL SPACE
+   </div>
+   <nav aria-label="Main navigation">
+    <button aria-current="page" class="nav active" data-view="checkin" type="button">
+     <span aria-hidden="true">
+      ◯
+     </span>
+     Daily check-in
+     <span aria-hidden="true" class="nav-end">
+      ↗
+     </span>
+    </button>
+    <button class="nav" data-view="history" type="button">
+     <span aria-hidden="true">
+      ☰
+     </span>
+     My journal
+     <span class="nav-end count" id="count">
+      0
+     </span>
+    </button>
+   </nav>
+   <div class="sidebar-bottom">
+    <div aria-hidden="true" class="orbit-art">
+     <span>
+      +
+     </span>
+    </div>
+    <h2>
+     A little reflection.
+     <br/>
+     A clearer tomorrow.
+    </h2>
+    <p>
+     Your routine tells a story.
+     <br/>
+     Take it one day at a time.
+    </p>
+    <div class="local-label">
+     <span aria-hidden="true">
+      ▣
+     </span>
+     Saved on this browser
+    </div>
+   </div>
+  </aside>
+  <main>
+   <header class="topbar">
+    <span>
+     PERSONAL LOG
+     <span class="slash">
+      /
+     </span>
+     <span id="header-view">
+      DAILY CHECK-IN
+     </span>
+    </span>
+    <span class="prototype">
+     <span class="status-dot">
+     </span>
+     PROTOTYPE
+    </span>
+   </header>
+   <section aria-labelledby="page-title" id="checkin-view">
+    <div class="intro">
+     <div>
+      <p class="eyebrow">
+       MAKE SPACE FOR YOURSELF
+      </p>
+      <h1 id="page-title">
+       How are you doing today?
+      </h1>
+      <p>
+       One short check-in. A better picture of your routine.
+      </p>
+     </div>
+     <div class="date-badge" id="today-label">
+     </div>
+    </div>
+    <!-- Required fields are validated within each step, never while hidden. -->
+    <form id="routine-form" novalidate="">
+     <div class="context-panel">
+      <label class="date-label">
+       Log date
+       <input name="date" required="" type="date"/>
+      </label>
+      <fieldset class="phase">
+       <legend>
+        Where are you in your mission?
+       </legend>
+       <label>
+        <input checked="" name="phase" type="radio" value="pre"/>
+        <span>
+         Before the mission
+        </span>
+       </label>
+       <label>
+        <input name="phase" type="radio" value="in"/>
+        <span>
+         During the mission
+        </span>
+       </label>
+      </fieldset>
+     </div>
+     <div hidden="" id="edit-banner">
+      You're editing a saved entry.
+      <button id="cancel-edit" type="button">
+       Start a new entry
+      </button>
+     </div>
+     <ol aria-label="Check-in progress" class="progress">
+      <li aria-current="step" class="current">
+       <span>
+        1
+       </span>
+       <div>
+        Sleep
+        <small>
+         Your rest
+        </small>
+       </div>
+      </li>
+      <li>
+       <span>
+        2
+       </span>
+       <div>
+        Mood &amp; energy
+        <small>
+         How you feel
+        </small>
+       </div>
+      </li>
+      <li>
+       <span>
+        3
+       </span>
+       <div>
+        Daily habits
+        <small>
+         Optional details
+        </small>
+       </div>
+      </li>
+     </ol>
+     <section aria-labelledby="sleep-heading" class="step-panel" data-step="0">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">
+        ☽
+       </span>
+       <div>
+        <p class="eyebrow">
+         STEP 01 / 03
+        </p>
+        <h2 id="sleep-heading" tabindex="-1">
+         Let's start with your sleep
+        </h2>
+        <p>
+         Think about your most recent main sleep period.
+        </p>
+       </div>
+       <span class="required-tag">
+        Required
+       </span>
+      </div>
+      <div class="two-column">
+       <label>
+        When did you try to sleep?
+        <input name="sleepStart" required="" type="datetime-local"/>
+        <span class="field-hint">
+         Include the date if you slept across midnight.
+        </span>
+       </label>
+       <label>
+        When did you finally wake up?
+        <input name="sleepEnd" required="" type="datetime-local"/>
+        <span class="field-hint">
+         Use the date and time on your device.
+        </span>
+       </label>
+      </div>
+      <div class="sleep-duration">
+       <label>
+        How much time did you actually sleep?
+        <!-- <span class="number-with-unit"> -->
+         <input max="24" min="0" name="sleepHours" placeholder="e.g. 7.5" required="" step="0.1" type="number"/>
+         <span>
+          hours
+         </span>
+        <!-- </span> -->
+        <span class="field-hint">
+         Estimate sleep only, excluding time you were awake.
+        </span>
+       </label>
+       <p class="sleep-window">
+        <span aria-hidden="true">
+         ☽
+        </span>
+        <span id="sleep-window">
+         Your sleep window will appear here.
+        </span>
+       </p>
+      </div>
+      <fieldset class="rating-field">
+       <legend>
+        How restful was your sleep?
+       </legend>
+       <div class="rating" data-labels="Very poor,Poor,Fair,Good,Very good" data-name="sleepQuality">
+       </div>
+      </fieldset>
+     </section>
+     <section aria-labelledby="mood-heading" class="step-panel" data-step="1" hidden="">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">
+        ☼
+       </span>
+       <div>
+        <p class="eyebrow">
+         STEP 02 / 03
+        </p>
+        <h2 id="mood-heading" tabindex="-1">
+         How did you feel today?
+        </h2>
+        <p>
+         Choose what best describes your day. There is no right answer.
+        </p>
+       </div>
+       <span class="required-tag">
+        Required
+       </span>
+      </div>
+      <fieldset class="rating-field">
+       <legend>
+        How was your overall mood today?
+       </legend>
+       <div class="rating" data-labels="Very low,Low,Neutral,Good,Very good" data-name="mood">
+       </div>
+      </fieldset>
+      <div class="slider-card">
+       <div class="slider-title">
+        <label for="stress">
+         How stressed did you feel today?
+        </label>
+        <output for="stress" id="stress-value">
+         5 / 10
+        </output>
+       </div>
+       <input aria-describedby="stress-scale" id="stress" max="10" min="0" name="stress" type="range" value="5"/>
+       <div class="range-labels" id="stress-scale">
+        <span>
+         0 · No stress
+        </span>
+        <span>
+         10 · Very high stress
+        </span>
+       </div>
+      </div>
+      <div class="slider-card">
+       <div class="slider-title">
+        <label for="fatigue">
+         How tired did you feel overall today?
+        </label>
+        <output for="fatigue" id="fatigue-value">
+         5 / 10
+        </output>
+       </div>
+       <input aria-describedby="fatigue-scale" id="fatigue" max="10" min="0" name="fatigue" type="range" value="5"/>
+       <div class="range-labels" id="fatigue-scale">
+        <span>
+         0 · Not tired
+        </span>
+        <span>
+         10 · Extremely tired
+        </span>
+       </div>
+      </div>
+      <p class="helper-note">
+       Move each slider to reflect your day. These are personal ratings, not clinical scores.
+      </p>
+     </section>
+     <section aria-labelledby="habits-heading" class="step-panel" data-step="2" hidden="">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">
+        ↗
+       </span>
+       <div>
+        <p class="eyebrow">
+         STEP 03 / 03
+        </p>
+        <h2 id="habits-heading" tabindex="-1">
+         Add a little context
+        </h2>
+        <p>
+         Fill in what you know, or save now. Every field here is optional.
+        </p>
+       </div>
+       <span class="optional-tag">
+        Optional
+       </span>
+      </div>
+      <div class="two-column">
+       <label>
+        Physical activity
+        <!-- <span class="number-with-unit"> -->
+         <input max="1440" min="0" name="activity" placeholder="e.g. 30" step="1" type="number"/>
+         <span>
+          min
+         </span>
+        <!-- </span> -->
+       </label>
+       <label>
+        Water you drank
+        <!-- <span class="number-with-unit"> -->
+         <input min="0" name="water" placeholder="e.g. 2000" step="1" type="number"/>
+         <span>
+          mL
+         </span>
+        <!-- </span> -->
+        <span class="field-hint">
+         Plain water only; not all drinks.
+        </span>
+       </label>
+       <label>
+        Caffeinated drinks
+        <!-- <span class="number-with-unit"> -->
+         <input min="0" name="caffeine" placeholder="e.g. 2" step="1" type="number"/>
+         <span>
+          drinks
+         </span>
+        <!-- </span> -->
+       </label>
+       <label>
+        Last caffeinated drink
+        <input name="caffeineTime" type="time"/>
+        <span class="field-hint">
+         Drink count is not a caffeine dose.
+        </span>
+       </label>
+      </div>
+      <fieldset class="context-field">
+       <legend>
+        Did anything affect your routine?
+       </legend>
+       <p class="field-hint">
+        Choose any that apply.
+       </p>
+       <div class="chips" id="factors">
+       </div>
+      </fieldset>
+      <label class="notes-label">
+       Anything else you'd like to note?
+       <textarea maxlength="1500" name="notes" placeholder="A busy day, a change in schedule, or something on your mind..." rows="3"></textarea>
+       <span class="field-hint">
+        Optional. Avoid identifying details.
+       </span>
+      </label>
+     </section>
+     <div id="form-error" role="alert" tabindex="-1">
+     </div>
+     <div class="step-actions">
+      <button class="secondary" hidden="" id="back-button" type="button">
+       ← Back
+      </button>
+      <span id="step-caption">
+       Step 1 of 3
+      </span>
+      <button class="primary" id="next-button" type="button">
+       Continue
+       <span aria-hidden="true">
+        →
+       </span>
+      </button>
+      <button class="primary" hidden="" id="save-button" type="submit">
+       Save check-in
+       <span aria-hidden="true">
+        ✓
+       </span>
+      </button>
+     </div>
+     <div class="storage-note">
+      <span aria-hidden="true">
+       ▣
+      </span>
+      <p>
+       Saved on this browser only.
+       <span>
+        Shared-device users may access entries. Export a backup from My journal.
+       </span>
+      </p>
+     </div>
+     <p class="medical">
+      Routine tracking only. This prototype does not diagnose conditions or set medical targets.
+     </p>
+    </form>
+   </section>
+   <!-- The existing browser-local entries remain available after this redesign. -->
+   <section aria-labelledby="history-heading" hidden="" id="history-view">
+    <div class="intro">
+     <div>
+      <p class="eyebrow">
+       YOUR ROUTINE, OVER TIME
+      </p>
+      <h1 id="history-heading">
+       My journal
+      </h1>
+      <p>
+       A space to revisit your daily check-ins.
+      </p>
+     </div>
+     <button class="secondary" id="export" type="button">
+      Export backup ↗
+     </button>
+    </div>
+    <div class="history-tools">
+     <label>
+      Mission phase
+      <select id="phase-filter">
+       <option value="all">
+        All entries
+       </option>
+       <option value="pre">
+        Before the mission
+       </option>
+       <option value="in">
+        During the mission
+       </option>
+      </select>
+     </label>
+     <button class="primary" id="new-entry" type="button">
+      + New check-in
+     </button>
+    </div>
+    <div id="entries">
+    </div>
+    <p class="medical">
+     Self-reported entries. No clinical score or diagnosis.
+    </p>
+   </section>
+  </main>
+  <div hidden="" id="toast" role="status">
+  </div>
+  <script src="js/app.js">
+  </script>
+ </body>
+</html>
