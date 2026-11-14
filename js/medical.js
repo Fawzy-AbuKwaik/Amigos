@@ -1,5 +1,6 @@
-// Medical view: offline self-assessment and decision support. It never diagnoses.
-// Reuses helpers from app.js (records, showToast, localDate, setView).
+// Laboratory and Assessment views: offline self-assessment and decision support.
+// They never diagnose. Content comes from js/data.js; helpers (records, showToast,
+// localDate, setView) come from app.js.
 (() => {
   "use strict";
 
@@ -28,118 +29,37 @@
 
   // General healthy-adult references at rest, each with its published source.
   // No age-specific bands are applied: none is used without a reliable source.
-  const VITALS = {
-    bp: {
-      name: "Blood pressure", unit: "mmHg", icon: "◍", staleHours: 24, step: 5, decimals: 0,
-      device: "Upper-arm cuff monitor",
-      format: r => `${r.v[0]}/${r.v[1]}`,
-      fields: [["Systolic (top number)", 50, 260], ["Diastolic (bottom number)", 30, 160]],
-      series: ["Systolic", "Diastolic"],
-      bands: [{ lo: 90, hi: 120, i: 0 }, { lo: 60, hi: 80, i: 1 }],
-      ref: {
-        text: "Below 120/80 mmHg; low is commonly below 90/60",
-        source: "American Heart Association (normal category); NHLBI (low blood pressure)"
-      },
-      check: r => r.v[0] >= 120 || r.v[1] >= 80 ? "Above the general adult reference (below 120/80)." :
-        r.v[0] < 90 || r.v[1] < 60 ? "Below the general adult reference (90/60 or higher)." : null,
-      symptom: "Dizziness",
-      steps: [
-        "Rest seated for 5 minutes. Avoid exercise and caffeine for 30 minutes before.",
-        "Place the cuff on a bare upper arm, supported at heart level.",
-        "Stay still and silent while the cuff inflates.",
-        "Take two readings one minute apart and save both."
-      ]
-    },
-    hr: {
-      name: "Heart rate", unit: "bpm", icon: "♡", staleHours: 24, step: 5, decimals: 0,
-      device: "Wrist pulse sensor",
-      format: r => `${r.v[0]}`,
-      fields: [["Resting heart rate", 20, 250]],
-      series: ["Heart rate"],
-      bands: [{ lo: 60, hi: 100, i: 0 }],
-      ref: { text: "60–100 bpm at rest", source: "American Heart Association (resting heart rate, adults)" },
-      check: r => r.v[0] > 100 ? "Above the general adult resting reference (60–100)." :
-        r.v[0] < 60 ? "Below the general adult resting reference (60–100). Fit adults often rest lower; compare with your baseline." : null,
-      symptom: "Palpitations",
-      steps: [
-        "Rest seated for 5 minutes before measuring.",
-        "Keep the sensor snug against the skin and stay still.",
-        "Wait for a stable number, about 30 seconds.",
-        "For a manual count, count wrist pulses for 30 seconds and double it."
-      ]
-    },
-    ecg: {
-      name: "ECG", unit: "", icon: "⌁", staleHours: 24, noAuto: true, noTrend: true, decimals: 0,
-      device: "Chest patch ECG",
-      format: r => `${r.seconds || 30} s recording`,
-      series: ["Heart rate during recording"],
-      bands: [],
-      ref: { text: "No numeric reference; recordings are read by the medical team", source: "Not interpreted by this app" },
-      steps: [
-        "Clean and dry the skin before attaching the patch or electrodes.",
-        "Sit or float still, relax your shoulders and breathe normally.",
-        "Record for the full 30 seconds without talking.",
-        "Add any symptoms you feel during the recording in the Symptoms section."
-      ]
-    },
-    spo2: {
-      name: "SpO₂", unit: "%", icon: "○", staleHours: 24, step: 1, decimals: 0,
-      device: "Fingertip pulse oximeter",
-      format: r => `${r.v[0]}`,
-      fields: [["Oxygen saturation", 50, 100]],
-      series: ["SpO₂"],
-      bands: [{ lo: 95, hi: 100, i: 0 }],
-      ref: {
-        text: "95–100% (sea-level air; cabin pressure can change this)",
-        source: "Mayo Clinic (pulse oximetry, healthy adults)"
-      },
-      check: r => r.v[0] < 95 ? "Below the general adult reference (95–100%)." : null,
-      symptom: "Shortness of breath",
-      steps: [
-        "Warm your hand and remove anything covering the fingernail.",
-        "Clip the sensor on a finger and keep the hand still.",
-        "Wait at least 30 seconds for a steady number.",
-        "Save the steady value, not the first one shown."
-      ]
-    },
-    rr: {
-      name: "Respiratory rate", unit: "breaths/min", icon: "≈", staleHours: 24, step: 2, decimals: 0,
-      device: "Manual count",
-      format: r => `${r.v[0]}`,
-      fields: [["Breaths per minute", 4, 60]],
-      series: ["Respiratory rate"],
-      bands: [{ lo: 12, hi: 20, i: 0 }],
-      ref: { text: "12–20 breaths/min at rest", source: "Johns Hopkins Medicine (vital signs, adults)" },
-      check: r => r.v[0] > 20 ? "Above the general adult resting reference (12–20)." :
-        r.v[0] < 12 ? "Below the general adult resting reference (12–20)." : null,
-      symptom: "Shortness of breath",
-      steps: [
-        "Rest for 5 minutes and breathe normally.",
-        "Count each rise of the chest for a full 60 seconds.",
-        "Try not to change your breathing while counting.",
-        "Enter the count as breaths per minute."
-      ]
-    },
-    temp: {
-      name: "Temperature", unit: "°C", icon: "△", staleHours: 24, step: 0.3, decimals: 1,
-      device: "Infrared thermometer",
-      format: r => r.v[0].toFixed(1),
-      fields: [["Body temperature", 30, 45]],
-      series: ["Temperature"],
-      bands: [{ lo: 36.1, hi: 37.2, i: 0 }],
-      ref: { text: "36.1–37.2 °C", source: "MedlinePlus, U.S. National Library of Medicine (adults)" },
-      check: r => r.v[0] > 37.2 ? "Above the general adult reference (36.1–37.2 °C)." :
-        r.v[0] < 36.1 ? "Below the general adult reference (36.1–37.2 °C)." : null,
-      symptom: "Unusual tiredness",
-      steps: [
-        "Wait 15 minutes after exercise, eating or drinking.",
-        "Use the same site each time, for example the forehead.",
-        "Hold the thermometer as its guide shows until it signals.",
-        "Repeat once if the number looks unexpected."
-      ]
-    }
-  };
-  const ORDER = ["bp", "hr", "ecg", "spo2", "rr", "temp"];
+  const DATA = AMIGOS.data;
+
+  // Build the shape the rest of this file uses from the tests in js/data.js.
+  const STALE_HOURS = { Daily: 24, Weekly: 8 * 24, Monthly: 32 * 24 };
+  const VITALS = {};
+  DATA.tests.forEach(test => {
+    const numeric = test.input === "number";
+    const fields = test.fields || [];
+    const decimals = test.decimals || 0;
+    const bands = fields.map((f, i) => ({ lo: f.lo, hi: f.hi, i }))
+      .filter(b => b.lo !== undefined && b.hi !== undefined);
+    VITALS[test.id] = {
+      ...test, decimals, bands,
+      noAuto: !numeric, noTrend: !numeric, noRange: !bands.length,
+      step: test.step || 1,
+      staleHours: STALE_HOURS[test.frequency] || Infinity,
+      format: r => numeric ? r.v.map(n => Number(n).toFixed(decimals)).join("/") :
+        test.input === "image" ? "Image saved" : "Recording saved",
+      fields: numeric ? fields.map(f => [f.label, f.min, f.max]) : null,
+      series: fields.length ? fields.map(f => f.short || f.label) : [test.name],
+      ref: { text: test.refText, source: test.source },
+      check: r => {
+        for (const b of bands) {
+          if (r.v[b.i] < b.lo) return `Below the reference: ${test.refText}.`;
+          if (r.v[b.i] > b.hi) return `Above the reference: ${test.refText}.`;
+        }
+        return null;
+      }
+    };
+  });
+  const ORDER = DATA.tests.map(test => test.id);
 
   // Mission-approved alert limits are supplied by the mission medical team.
   // None are bundled: the app never invents them. Shape: { hr: "50–110 bpm" }.
@@ -154,10 +74,6 @@
     nodata: { icon: "?", label: "No data" }
   };
 
-  const SYMPTOMS = ["Dizziness", "Headache", "Nausea", "Shortness of breath",
-    "Chest discomfort", "Palpitations", "Unusual tiredness"
-  ];
-
   const GROUPS = [
     { id: "circulation", label: "Blood pressure + heart rate + dizziness", vitals: ["bp", "hr"], symptom: "Dizziness" },
     { id: "breathing", label: "SpO₂ + respiratory rate + shortness of breath", vitals: ["spo2", "rr"], symptom: "Shortness of breath" },
@@ -166,28 +82,7 @@
 
   /* ---------- Sample crew (prototype data) ---------- */
 
-  const CREW = [{
-    id: "c1", name: "Rana Haddad", role: "Flight engineer", age: 38, journalOwner: true,
-    mission: "AMIGOS-1 analog mission", missionDay: 42, missionLength: 180,
-    history: "Appendectomy (2015)", conditions: "None recorded",
-    medications: "None", allergies: "Penicillin",
-    baseline: { bp: "112/72 mmHg", hr: "58 bpm", spo2: "98%", rr: "14 breaths/min", temp: "36.6 °C" },
-    baselineValue: { bp: 112, hr: 58, spo2: 98, rr: 14, temp: 36.6 }
-  }, {
-    id: "c2", name: "Marco Okafor", role: "Commander", age: 45,
-    mission: "AMIGOS-1 analog mission", missionDay: 42, missionLength: 180,
-    history: "Left knee arthroscopy (2019)", conditions: "Seasonal allergic rhinitis",
-    medications: "Loratadine 10 mg, as needed", allergies: "None known",
-    baseline: { bp: "118/76 mmHg", hr: "64 bpm", spo2: "98%", rr: "15 breaths/min", temp: "36.8 °C" },
-    baselineValue: { bp: 118, hr: 64, spo2: 98, rr: 15, temp: 36.8 }
-  }, {
-    id: "c3", name: "Lena Varga", role: "Mission specialist", age: 33,
-    mission: "AMIGOS-1 analog mission", missionDay: 42, missionLength: 180,
-    history: "None recorded", conditions: "None recorded",
-    medications: "None", allergies: "Latex",
-    baseline: { hr: "66 bpm", temp: "36.5 °C" },
-    baselineValue: { hr: 66, temp: 36.5 }
-  }];
+  const CREW = DATA.crew;
 
   // rows: [hoursAgo, ...values]
   function sample(crew, type, rows, extra = {}) {
@@ -212,30 +107,17 @@
     ...sample("c2", "rr", [[72, 15], [1, 14]]),
     ...sample("c2", "temp", [[72, 36.8], [24, 36.9], [1, 37.0]]),
     ...sample("c3", "hr", [[6, 71]]),
-    ...sample("c3", "temp", [[6, 36.4]])
+    ...sample("c3", "temp", [[6, 36.4]]),
+    ...sample("c1", "glucose", [[20, 92]]),
+    ...sample("c1", "hgb", [[200, 14.1]]),
+    ...sample("c1", "urine", [[44, 1.018]]),
+    ...sample("c1", "mass", [[164, 71.2], [20, 71.4]]),
+    ...sample("c2", "mass", [[44, 82.0]])
   ];
   const SAMPLE_SYMPTOMS = [
     { id: "sample-s1", crew: "c1", name: "Dizziness", severity: 2, at: loadedAt - 3 * HOUR, note: "When standing up after exercise", sample: true },
     { id: "sample-s2", crew: "c1", name: "Dizziness", severity: 1, at: loadedAt - 27 * HOUR, note: "", sample: true }
   ];
-  const SAMPLE_TESTS = {
-    c1: [
-      { name: "Body mass", value: "71.4", unit: "kg", hoursAgo: 20, source: "Body mass measurement device", trend: "→ Steady (baseline 71.0 kg)", status: "nodata", reason: "No general reference applies. Tracked against your baseline only." },
-      { name: "Blood glucose (fingerstick)", value: "5.1", unit: "mmol/L", hoursAgo: 20, source: "Handheld glucose meter", trend: "– Not enough results", status: "nodata", reason: "Fasting state was not recorded, so no reference is applied." },
-      { name: "Urine test strip", status: "nodata", reason: "No result on file." }
-    ],
-    c2: [
-      { name: "Body mass", value: "82.0", unit: "kg", hoursAgo: 44, source: "Body mass measurement device", trend: "→ Steady (baseline 82.3 kg)", status: "nodata", reason: "No general reference applies. Tracked against your baseline only." },
-      { name: "Blood glucose (fingerstick)", status: "nodata", reason: "No result on file." },
-      { name: "Urine test strip", status: "nodata", reason: "No result on file." }
-    ],
-    c3: [
-      { name: "Body mass", status: "nodata", reason: "No result on file." },
-      { name: "Blood glucose (fingerstick)", status: "nodata", reason: "No result on file." },
-      { name: "Urine test strip", status: "nodata", reason: "No result on file." }
-    ]
-  };
-
   /* ---------- Browser storage (same safety rules as the routine journal) ---------- */
 
   let store = { v: 1, activeCrew: "c1", measurements: [], symptoms: [] };
@@ -250,7 +132,11 @@
     // Never overwrite unreadable existing data.
     storeReady = false;
   }
-  if (!CREW.some(member => member.id === store.activeCrew)) store.activeCrew = "c1";
+  // Tests the user has unticked as not carried on this vehicle, and the assessment period.
+  if (!Array.isArray(store.unavailable)) store.unavailable = [];
+  if (![7, 30, 90].includes(store.period)) store.period = 7;
+  const available = id => !store.unavailable.includes(id);
+  const span = () => store.period * DAY;
 
   function saveStore() {
     if (!storeReady) {
@@ -272,11 +158,11 @@
   let system = null; // selected body system, or null for all
   let picked = "bp"; // indicator shown in the trend chart
 
-  const crew = () => CREW.find(member => member.id === store.activeCrew);
+  const crew = () => CREW.find(member => member.id === AMIGOS.crewId());
   const readingsFor = type => [...SAMPLE_READINGS, ...store.measurements]
-    .filter(r => r.crew === store.activeCrew && r.type === type).sort((a, b) => a.at - b.at);
+    .filter(r => r.crew === AMIGOS.crewId() && r.type === type).sort((a, b) => a.at - b.at);
   const symptomsFor = () => [...SAMPLE_SYMPTOMS, ...store.symptoms]
-    .filter(s => s.crew === store.activeCrew).sort((a, b) => b.at - a.at);
+    .filter(s => s.crew === AMIGOS.crewId()).sort((a, b) => b.at - a.at);
 
   /* ---------- Formatting ---------- */
 
@@ -318,6 +204,7 @@
     if (Date.now() - latest.at > def.staleHours * HOUR) {
       return { key: "recheck", reason: `The last reading is ${ago(latest.at).replace(" ago", "")} old. Take a new one.` };
     }
+    if (def.noRange) return { key: "nodata", reason: "No general reference. Followed against your own earlier results." };
     const problem = def.check(latest);
     return problem ? { key: problem.startsWith("Above") ? "over" : "below", reason: problem } :
       { key: "normal", reason: "Inside the general adult reference." };
@@ -353,7 +240,9 @@
 
   function routineByDate() {
     const map = {};
-    const list = typeof records === "undefined" ? [] : records;
+    // Only the active crew member's check-ins (older entries belong to the first crew member).
+    const list = (typeof records === "undefined" ? [] : records)
+      .filter(record => (record.crew || CREW[0].id) === AMIGOS.crewId());
     list.forEach(record => {
       const existing = map[record.date];
       if (!existing || (record.updatedAt || "") > (existing.updatedAt || "")) map[record.date] = record;
@@ -385,12 +274,16 @@
       bands.forEach(b => {
         svg += `<rect class="med-band" x="${left}" y="${n(y(b.hi))}" width="${width - left - right}" height="${n(y(b.lo) - y(b.hi))}"/>`;
       });
+      // About eight date labels whatever the period: weekdays for a week, dates beyond that.
+      const days = (options.to - options.from) / DAY;
+      const stride = Math.max(1, Math.ceil(days / 8));
+      const format = days > 10 ? { day: "numeric", month: "short" } : { weekday: "short" };
       const tick = new Date(options.from);
       tick.setHours(24, 0, 0, 0);
-      for (; tick.getTime() < options.to; tick.setDate(tick.getDate() + 1)) {
+      for (; tick.getTime() < options.to; tick.setDate(tick.getDate() + stride)) {
         const tx = n(x(tick.getTime()));
         svg += `<line class="med-axis" x1="${tx}" x2="${tx}" y1="${top}" y2="${height - bottom}"/>` +
-          `<text class="med-tick" x="${tx}" y="${height - 8}" text-anchor="middle">${tick.toLocaleDateString("en", { weekday: "short" })}</text>`;
+          `<text class="med-tick" x="${tx}" y="${height - 8}" text-anchor="middle">${tick.toLocaleDateString("en", format)}</text>`;
       }
       [low + pad, (low + high) / 2, high - pad].forEach(value => {
         svg += `<text class="med-tick" x="${left - 7}" y="${n(y(value) + 4)}" text-anchor="end">${value.toFixed(options.decimals || 0)}</text>`;
@@ -428,8 +321,8 @@
   function chartSummary(type, from) {
     const def = VITALS[type];
     const list = readingsFor(type).filter(r => r.at >= from);
-    if (!list.length) return `${def.name}: no readings in the last 7 days.`;
-    return `${def.name}, last 7 days: ${list.length} readings, latest ${def.format(list.at(-1))} ${def.unit}.`;
+    if (!list.length) return `${def.name}: no readings in the selected period.`;
+    return `${def.name}, selected period: ${list.length} readings, latest ${def.format(list.at(-1))} ${def.unit}.`;
   }
 
   function chartKey(type, withMarker) {
@@ -445,35 +338,33 @@
   // Values written by the Daily check-in (Routines view).
   const ROUTINE = {
     sleep: {
-      name: "Sleep", unit: "h", field: "sleepHours", decimals: 1, lo: 7, hi: 9, short: "the 7–9 h reference",
+      name: "Sleep", unit: "h", get: e => e.sleepHours, decimals: 1, lo: 7, hi: 9, short: "the 7–9 h reference",
       ref: "7–9 h of sleep per night. Source: National Sleep Foundation (adults)."
     },
-    mood: {
-      name: "Mood", unit: "/ 5", field: "mood", lo: 3, hi: 5, short: "the 3–5 part of your scale",
-      ref: "Your own 1–5 rating; 1–2 counts as low. Not a clinical score."
+    mind: {
+      name: "Mind & mood", unit: "/ 5", get: e => e.mind ?? e.mood, decimals: 1, lo: 3, hi: 5, short: "the 3–5 part of the scale",
+      ref: "Average of your daily mental health answers (1–5); below 3 counts as low. Not a clinical score."
     },
-    stress: {
-      name: "Stress", unit: "/ 10", field: "stress", lo: 0, hi: 6, short: "the 0–6 part of your scale",
-      ref: "Your own 0–10 rating; 7 or more counts as high. Not a clinical score."
+    nutrition: {
+      name: "Appetite", unit: "/ 5", get: e => e.appetite, lo: 3, hi: 5, short: "the 3–5 part of the scale",
+      ref: "Your own 1–5 appetite rating; 1–2 counts as low. Not a clinical score."
     },
     water: {
-      name: "Water", unit: "mL", field: "water", own: true, short: "your own 7-day average (±20%)",
-      ref: "Compared with your own 7-day average. The mission fluid plan is not loaded."
+      name: "Water", unit: "mL", get: e => e.water, own: true, short: "your own average for the period (±20%)",
+      ref: "Compared with your own average for the period. The mission fluid plan is not loaded."
     },
     activity: {
-      name: "Exercise", unit: "min", field: "activity", own: true, short: "your own 7-day average (±20%)",
-      ref: "Compared with your own 7-day average. The mission exercise plan is not loaded."
+      name: "Exercise", unit: "min", get: e => e.activity, own: true, short: "your own average for the period (±20%)",
+      ref: "Compared with your own average for the period. The mission exercise plan is not loaded."
     }
   };
 
-  const SYSTEMS = [
-    { id: "mind", name: "Sleep & mood", ids: ["sleep", "mood", "stress"], note: "Sleep, mood and stress from your Daily check-in." },
-    { id: "resp", name: "Respiratory", ids: ["spo2", "rr"], note: "Oxygen saturation and breathing rate." },
-    { id: "cardio", name: "Cardiovascular", ids: ["hr", "bp", "ecg"], note: "Heart rate, blood pressure and ECG recordings." },
-    { id: "fluids", name: "Fluids & temperature", ids: ["temp", "water"], note: "Body temperature, with water intake from your Daily check-in." },
-    { id: "muscle", name: "Muscle & bone", ids: ["activity"], note: "Exercise minutes from your Daily check-in." }
-  ];
-  const ALL_IDS = ["hr", "bp", "spo2", "rr", "temp", "ecg", "sleep", "mood", "stress", "water", "activity"];
+  // Body systems from js/data.js, each with its available tests and daily indicators.
+  const systems = () => DATA.systems.map(item => ({
+    ...item,
+    ids: [...ORDER.filter(id => VITALS[id].system === item.id && available(id)), ...item.routine]
+  }));
+  const allIds = () => systems().flatMap(item => item.ids);
 
   const zoneOf = (value, lo, hi) => value < lo ? "below" : value > hi ? "over" : "normal";
   // Ring percent: the normal range always spans 25–75% of the circle.
@@ -491,13 +382,13 @@
       valueText: latest ? `${def.format(latest)} ${def.unit}`.trim() : "no reading",
       when: latest ? `${ago(latest.at)} · ${latest.source}${latest.sample ? " (sample)" : ""}` : "Not measured",
       refText: `${def.ref.text}. Source: ${def.ref.source}.`,
-      decimals: def.decimals, bands: def.bands, series: seriesFor(id, Date.now() - WEEK)
+      decimals: def.decimals, bands: def.bands, series: seriesFor(id, Date.now() - span())
     };
-    if (!latest || def.noAuto) return out;
+    if (!latest || def.noAuto || def.noRange) return out;
     // Draw the ring from the value that is out of range (for example diastolic), else the first.
     const band = def.bands.find(b => zoneOf(latest.v[b.i], b.lo, b.hi) !== "normal") || def.bands[0];
     out.pct = percentOf(latest.v[band.i], band.lo, band.hi);
-    const week = list.filter(r => r.at >= Date.now() - WEEK);
+    const week = list.filter(r => r.at >= Date.now() - span());
     if (week.length >= 2) {
       const average = { v: def.series.map((_, i) => Number(mean(week.map(r => r.v[i])).toFixed(def.decimals))) };
       const problem = def.check(average);
@@ -509,22 +400,18 @@
 
   function routineIndicator(id) {
     const def = ROUTINE[id];
-    const member = crew();
     const out = {
       id, kind: "routine", name: def.name, unit: def.unit, zone: "nodata", pct: null, bigText: "–",
       valueText: "not recorded", when: "From your Daily check-in", refText: def.ref,
       decimals: def.decimals || 0, bands: [], series: [{ label: def.name, points: [] }]
     };
-    if (!member.journalOwner) {
-      out.reason = `The routine journal on this device is not linked to ${member.name}.`;
-      return out;
-    }
     const journal = routineByDate();
     const entries = Object.values(journal)
-      .filter(e => e[def.field] !== null && e[def.field] !== undefined && e[def.field] !== "")
+      .map(e => ({ raw: def.get(e), date: e.date }))
+      .filter(e => e.raw !== null && e.raw !== undefined && e.raw !== "")
       // Plot each check-in at midday, but never later than now.
-      .map(e => ({ t: Math.min(new Date(`${e.date}T12:00`).getTime(), Date.now()), v: Number(e[def.field]), date: e.date }))
-      .filter(e => Number.isFinite(e.v) && e.t >= Date.now() - WEEK).sort((a, b) => a.t - b.t);
+      .map(e => ({ t: Math.min(new Date(`${e.date}T12:00`).getTime(), Date.now()), v: Number(e.raw), date: e.date }))
+      .filter(e => Number.isFinite(e.v) && e.t >= Date.now() - span()).sort((a, b) => a.t - b.t);
     out.series[0].points = entries;
     const today = localDate();
     const current = entries.findLast(e => e.date === today || e.date === dateKey(Date.now() - DAY));
@@ -564,33 +451,72 @@
 
   /* ---------- Recommendations ---------- */
 
-  // Prototype rule set. Each rule looks at the current test, its 7-day average and
-  // related indicators (temperature, mood, stress, fluids, sleep, symptoms). It only
-  // prompts to recheck, complete data, follow the mission plan or contact the medical
-  // team. Replace with mission-approved guidance before operational use.
+  // PLACEHOLDER rule set until the research team's table is loaded. Each rule looks at
+  // the current result, its average over the chosen period and related indicators
+  // (temperature, mind and mood, fluids, sleep, symptoms). It says what the person can
+  // do, with a mental approach where it fits, and when to contact the flight surgeon.
+  // It never names a condition.
+  const activitiesFor = tags => DATA.activities.filter(a => a.goodFor.some(tag => tags.includes(tag)))
+    .slice(0, 3).map(a => a.name);
+  const ACTIVITY_TAGS = { mind: ["mood", "connection", "calm"], sleep: ["sleep", "calm"], activity: ["activity", "energy"] };
+
   function buildRecommendations() {
     const list = [];
-    const all = Object.fromEntries(ALL_IDS.map(id => [id, indicator(id)]));
+    const ids = allIds();
+    const has = id => ids.includes(id);
+    const all = Object.fromEntries([...ORDER, ...Object.keys(ROUTINE)].map(id => [id, indicator(id)]));
     const recentSymptoms = symptomsFor().filter(s => Date.now() - s.at < DAY);
+    const catalog = Object.fromEntries(DATA.symptoms.map(item => [item.name, item]));
     const used = new Set();
     const lower = x => ["ECG", "SpO₂"].includes(x.name) ? x.name : x.name.toLowerCase();
     const word = zone => STATUS[zone].label.toLowerCase();
     const line = x => `${x.name} now ${x.valueText} (${word(x.zone)})` +
-      (x.avgText ? ` · 7-day average ${x.avgText}${x.avgZone ? ` (${word(x.avgZone)})` : ""}` : "");
+      (x.avgText ? ` · period average ${x.avgText}${x.avgZone ? ` (${word(x.avgZone)})` : ""}` : "");
     const symptomLine = name => {
-      const s = recentSymptoms.find(item => item.name === name);
-      return s ? `${s.name} logged ${formatTime(s.at)}, strength ${s.severity}/5` : null;
+      const item = recentSymptoms.find(entry => entry.name === name);
+      return item ? `${item.name} logged ${formatTime(item.at)}, strength ${item.severity}/5` : null;
     };
-    const measure = id => ["Measure again", () => openDetail(id), "medical"];
+    const linkedSymptom = id => (DATA.symptoms.find(item => item.tests.includes(id) && symptomLine(item.name)) || {}).name;
+    const measure = id => ["Measure again", () => openDetail(id)];
     const checkin = ["Open check-in", () => setView("checkin"), "routines"];
-    const { bp, hr, temp, water, sleep, mood, stress } = all;
+    const { bp, hr, temp, water, sleep, mind } = all;
+
+    // Signs and symptoms decide first: fast response, or tests for a better recommendation.
+    const seen = new Set();
+    recentSymptoms.forEach(entry => {
+      const info = catalog[entry.name];
+      if (!info || seen.has(entry.name)) return;
+      seen.add(entry.name);
+      const logged = `${entry.name} logged ${formatTime(entry.at)}, strength ${entry.severity}/5`;
+      if (info.urgency === "now" || entry.severity >= 4) {
+        list.push({
+          urgent: true,
+          title: `Contact the flight surgeon now: ${entry.name.toLowerCase()}`,
+          action: "This needs a fast response. Contact the flight surgeon using your mission procedure. Run tests only if that does not delay the call.",
+          why: [logged, info.urgency === "now" ? "This symptom is marked as needing a fast response" : "You rated it strong or severe"],
+          button: ["Open case summary", () => openTab("summary")]
+        });
+      } else if (info.urgency === "tests") {
+        const missing = info.tests.filter(id => has(id) && !((readingsFor(id).at(-1) || {}).at >= entry.at - HOUR));
+        if (missing.length) {
+          list.push({
+            title: `Run tests for your ${entry.name.toLowerCase()}`,
+            action: `These results will give you a better recommendation: ${missing.map(id => VITALS[id].name).join(", ")}.`,
+            why: [logged, "No result for these tests since the symptom was logged"],
+            mental: info.care,
+            button: ["Enter a result", () => openDetail(missing[0])]
+          });
+        }
+      }
+    });
 
     // Blood pressure together with body fluids and dizziness.
-    if (bp.zone === "below" && water.zone !== "normal" && water.zone !== "over") {
+    if (has("bp") && bp.zone === "below" && water.zone !== "normal" && water.zone !== "over") {
       list.push({
         title: "Check your fluids, then recheck blood pressure",
-        action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it stays below the reference or you feel dizzy, contact the medical team using your mission procedure.",
+        action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it stays below the reference or you feel dizzy, contact the flight surgeon using your mission procedure.",
         why: [line(bp), water.zone === "nodata" ? "Water: not recorded in the Daily check-in" : line(water), symptomLine("Dizziness")],
+        mental: "Move slowly when you change position, and pause before starting a task.",
         button: measure("bp")
       });
       used.add("bp").add("water");
@@ -599,51 +525,55 @@
     const baseHr = crew().baselineValue.hr;
     const hrNow = readingsFor("hr").at(-1);
     const hrRaised = hr.zone === "over" || (hrNow && baseHr && hrNow.v[0] - baseHr >= 15);
-    if (temp.zone === "over" && hrRaised) {
+    if (has("temp") && has("hr") && temp.zone === "over" && hrRaised) {
       list.push({
         title: "Recheck temperature and heart rate together",
-        action: "Rest for 15 minutes, then repeat both. If both are still raised, contact the medical team using your mission procedure.",
-        why: [line(temp), line(hr), baseHr ? `Heart rate baseline ${baseHr} bpm` : null, symptomLine("Unusual tiredness")],
+        action: "Rest for 15 minutes, drink water, then repeat both. If both are still raised, contact the flight surgeon using your mission procedure.",
+        why: [line(temp), line(hr), baseHr ? `Heart rate baseline ${baseHr} bpm` : null, symptomLine("Fever or chills")],
         button: measure("temp")
       });
       used.add("temp").add("hr");
     }
-    // Mood and stress together with sleep.
-    const shortSleep = sleep.zone === "below" || sleep.avgZone === "below";
-    if ((mood.zone === "below" || stress.zone === "over") && shortSleep) {
+    // Mind and mood together with sleep.
+    if (mind.zone === "below" && (sleep.zone === "below" || sleep.avgZone === "below")) {
       list.push({
-        title: "Protect your sleep window",
-        action: "Low mood or high stress is showing alongside short sleep. Keep to your scheduled sleep period tonight. If this continues for several days, talk to the medical team using your mission procedure.",
-        why: [line(mood), line(stress), line(sleep)],
+        title: "Protect your sleep and do one thing for your mood",
+        action: "Low mood is showing alongside short sleep. Keep your scheduled sleep period tonight and dim the lights an hour before. If this continues for several days, talk to the flight surgeon.",
+        why: [line(mind), line(sleep)],
+        mental: "Pick one small thing you can finish today, and tell a crewmate how you are doing.",
+        activities: activitiesFor(["mood", "connection", "sleep"]),
         button: checkin
       });
-      used.add("mood").add("stress").add("sleep");
+      used.add("mind").add("sleep");
     }
-    // Every other indicator: compare the current test with its 7-day average.
-    ALL_IDS.forEach(id => {
+    // Every other indicator: compare the current result with its average for the period.
+    ids.forEach(id => {
       const x = all[id];
       if (used.has(id)) return;
       const vital = x.kind === "vital";
+      const tags = ACTIVITY_TAGS[id];
       if (flagged(x) && x.avgZone === x.zone) {
         list.push({
           title: `${x.name} has stayed ${x.zone === "below" ? "below" : "over"} the normal range`,
-          action: "The current result and the 7-day average are both outside the normal range. Contact the medical team using your mission procedure.",
-          why: [line(x), `Reference: ${x.refText}`, symptomLine(VITALS[id]?.symptom)],
+          action: "The current result and the average for the period are both outside the normal range. Tell the flight surgeon using your mission procedure.",
+          why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
+          activities: tags && activitiesFor(tags),
           button: vital ? measure(id) : checkin
         });
       } else if (flagged(x)) {
         list.push({
           title: vital ? `Recheck your ${lower(x)}` : `${x.name} is ${x.zone === "below" ? "below" : "over"} your normal range`,
           action: vital ?
-            "This result differs from your 7-day average. Repeat the measurement using the steps shown. If it is still outside the normal range, contact the medical team using your mission procedure." :
-            "Follow your mission plan today and log it in the Daily check-in. If it continues for several days, tell the medical team.",
-          why: [line(x), `Reference: ${x.refText}`, symptomLine(VITALS[id]?.symptom)],
+            "This result differs from your average for the period. Repeat the measurement using the steps shown. If it is still outside the normal range, contact the flight surgeon using your mission procedure." :
+            "Follow your mission plan today and log it in the Daily check-in. If it continues for several days, tell the flight surgeon.",
+          why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
+          activities: tags && activitiesFor(tags),
           button: vital ? measure(id) : checkin
         });
       } else if (x.zone === "normal" && x.avgZone && x.avgZone !== "normal") {
         list.push({
           title: `Keep watching your ${lower(x)}`,
-          action: `The current result is normal, but the 7-day average is ${x.avgZone === "below" ? "below" : "over"} the normal range. Keep recording it daily so the medical team can see whether it settles.`,
+          action: `The current result is normal, but the average for the period is ${x.avgZone === "below" ? "below" : "over"} the normal range. Keep recording it so the trend is clear.`,
           why: [line(x), `Reference: ${x.refText}`],
           button: vital ? measure(id) : checkin
         });
@@ -652,51 +582,40 @@
           title: `Take a new ${lower(x)} reading`,
           action: "A fresh reading is needed before this result can be compared with the normal range.",
           why: [x.reason, `Last reading: ${x.valueText} · ${x.when}`],
-          button: ["Measure now", () => openDetail(id), "medical"]
+          button: ["Measure now", () => openDetail(id)]
         });
       }
     });
-    recentSymptoms.filter(s => s.severity >= 4).forEach(s => {
-      list.push({
-        title: `Tell the medical team about your ${s.name.toLowerCase()}`,
-        action: "You rated this symptom strong or severe. Contact the medical team now using your mission procedure. This app does not judge urgency.",
-        why: [`${s.name} logged ${formatTime(s.at)}, strength ${s.severity}/5`],
-        button: ["Open case summary", () => openTab("summary"), "medical"]
-      });
-    });
-    if (crew().journalOwner && !routineByDate()[localDate()]) {
+    if (!routineByDate()[localDate()]) {
       list.push({
         title: "Complete today's check-in",
-        action: "Sleep, mood, stress, water and exercise feed the Medical view and its recommendations.",
+        action: "Sleep, food, water, mood and exercise feed the assessment and its recommendations.",
         why: [`No Daily check-in saved for today (${localDate()})`],
         button: checkin
       });
     }
-    return list;
+    // Anything needing a fast response goes first.
+    return list.sort((a, b) => Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)));
   }
 
-  // The same list is shown in the Medical view and in the Daily check-in.
+  // The same list is shown in the Assessment, the Laboratory flow and the Daily check-in.
   function recommendationCard(item, inRoutines) {
     const [label, run, view] = item.button;
-    let button = null;
-    if (!inRoutines) {
-      button = h("button", { class: "secondary", type: "button", text: label, onclick: run });
-    } else if (view === "medical") {
-      button = h("button", {
-        class: "secondary", type: "button", text: "Open in Medical view",
-        onclick: () => { setView("medical"); run(); }
-      });
-    }
-    return h("article", { class: "med-reco" },
+    const button = inRoutines && view === "routines" ? null :
+      h("button", { class: "secondary", type: "button", text: label, onclick: run });
+    return h("article", { class: `med-reco${item.urgent ? " is-urgent" : ""}` },
       h("div", {},
-        h("h3", { text: item.title }),
+        h("h3", {}, item.urgent ? h("span", { "aria-hidden": "true", text: "▲ " }) : null, item.title),
         h("p", { text: item.action }),
+        item.mental ? h("p", { class: "med-try", text: `Mental approach: ${item.mental}` }) : null,
+        item.activities && item.activities.length ?
+        h("p", { class: "med-try", text: `Activities to try: ${item.activities.join(" · ")}` }) : null,
         h("div", { class: "med-why-title", text: "Prompted by" }),
         h("ul", { class: "med-why" }, ...item.why.filter(Boolean).map(text => h("li", { text })))),
       button);
   }
 
-  const RULE_NOTE = "Prototype rules, not yet mission-approved. Decision support only, never a diagnosis.";
+  const RULE_NOTE = "Placeholder rules until the research data is loaded. Decision support only, never a diagnosis.";
 
   let stripOpen = false;
 
@@ -706,27 +625,42 @@
     box.replaceChildren();
     box.hidden = !items.length;
     if (!items.length) return;
-    const details = h("details", { class: "med-profile", open: stripOpen },
+    const details = h("details", { class: "med-profile", open: stripOpen || items.some(item => item.urgent) },
       h("summary", {}, `${items.length} recommendation${items.length > 1 ? "s" : ""} `,
-        h("span", { text: `· ${crew().name} · same list as the Medical view` })),
+        h("span", { text: `· ${crew().name} · same list as the Assessment` })),
       ...items.map(item => recommendationCard(item, true)),
       h("p", { class: "med-quiet med-rule-note", text: RULE_NOTE }));
     details.addEventListener("toggle", () => { stripOpen = details.open; });
     box.append(details);
   }
 
-  /* ---------- Navigation inside the Medical view ---------- */
+  /* ---------- Navigation inside the Assessment ---------- */
+
+  // One section serves two destinations in the sidebar.
+  const MODES = {
+    lab: {
+      tabs: ["tests", "symptoms"], title: "Laboratory", eyebrow: "TESTS, SIGNS AND SYMPTOMS",
+      text: "Choose the tests your vehicle carries, enter results, and check signs and symptoms."
+    },
+    assess: {
+      tabs: ["dash", "related", "summary"], title: "Assessment", eyebrow: "YOUR HEALTH OVER TIME",
+      text: "Daily check-ins and lab tests for one person, over the period you choose."
+    }
+  };
+  let mode = "lab";
 
   function openTab(name) {
     tab = name;
-    document.querySelectorAll("[name=medtab]").forEach(input => { input.checked = input.value === name; });
-    render();
+    const need = Object.keys(MODES).find(key => MODES[key].tabs.includes(name));
+    // Changing view redraws through the amigos:view event.
+    if (need !== mode || $("#medical-view").hidden) setView(need);
+    else render();
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   function openDetail(type) {
     detailType = type;
-    if (tab !== "dash") openTab("dash");
+    if ($("#medical-view").hidden) setView("lab");
     else render();
     $("#med-detail").scrollIntoView({ block: "start" });
     $("#med-detail h2")?.focus();
@@ -789,7 +723,7 @@
         pill(x.zone)),
       h("span", { class: "med-ring-foot" },
         h("span", { text: x.reason }),
-        h("span", { text: x.avgText ? `7-day average ${x.avgText}${x.avgZone ? ` · ${STATUS[x.avgZone].label}` : ""}` : "7-day average: not enough results" }),
+        h("span", { text: x.avgText ? `Period average ${x.avgText}${x.avgZone ? ` · ${STATUS[x.avgZone].label}` : ""}` : "Period average: not enough results" }),
         h("span", { text: x.when })));
   }
 
@@ -801,32 +735,39 @@
   }
 
   const BODY_MARKS = {
-    mind: [110, 34, "SLEEP / MOOD"], resp: [93, 112, "RESPIRATORY"], cardio: [120, 128, "CARDIO"],
-    fluids: [110, 178, "FLUIDS / TEMP"], muscle: [86, 256, "MUSCLE / BONE"]
+    brain: [110, 24], eyes: [117, 46], lungs: [93, 110], heart: [120, 130],
+    blood: [131, 158], fluids: [110, 188], muscle: [86, 256]
+  };
+  const ORGANS = {
+    brain: "M96 30 C96 16 124 16 124 30 C124 37 118 38 110 38 C102 38 96 37 96 30 Z M110 18 L110 38",
+    eyes: "M98 46 a5 3 0 1 0 10 0 a5 3 0 1 0 -10 0 Z M112 46 a5 3 0 1 0 10 0 a5 3 0 1 0 -10 0 Z",
+    lungs: "M104 96 C92 98 84 112 84 134 C92 140 102 138 104 132 Z M116 96 C128 98 136 112 136 134 C128 140 118 138 116 132 Z M110 86 L110 100",
+    heart: "M120 140 C108 132 108 120 116 120 C119 120 120 123 120 124 C120 123 122 120 125 120 C132 120 132 132 120 140 Z",
+    blood: "M124 158 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 Z",
+    fluids: "M110 170 C118 180 122 186 122 192 C122 199 117 204 110 204 C103 204 98 199 98 192 C98 186 102 180 110 170 Z",
+    muscle: "M82 230 C80 226 86 224 86 229 C87 224 93 226 90 231 L89 281 C93 285 87 289 86 284 C85 289 79 285 83 281 Z"
   };
 
   function bodyFigure(all) {
     const on = id => system === id ? " is-on" : "";
     let marks = "";
-    SYSTEMS.forEach(item => {
-      const [x, y, label] = BODY_MARKS[item.id];
+    let organs = "";
+    systems().forEach(item => {
+      const [x, y] = BODY_MARKS[item.id];
       const zone = systemZone(item, all);
+      organs += `<path class="med-organ${on(item.id)}" d="${ORGANS[item.id]}"/>`;
       marks += `<g class="med-mark med-mark-${zone}${on(item.id)}" data-system="${item.id}" role="button" tabindex="0" ` +
         `aria-pressed="${system === item.id}" aria-label="${item.name}: ${STATUS[zone].label}">` +
         `<line x1="${x + 10}" y1="${y}" x2="194" y2="${y}"/><circle class="med-mark-halo" cx="${x}" cy="${y}" r="10"/>` +
         `<circle class="med-mark-core" cx="${x}" cy="${y}" r="4.5"/>` +
-        `<text x="199" y="${y + 4}">${label} ${STATUS[zone].icon}</text></g>`;
+        `<text x="199" y="${y + 4}">${item.mark} ${STATUS[zone].icon}</text></g>`;
     });
     const wrap = h("div", { class: "med-body" });
-    wrap.innerHTML = `<svg viewBox="34 4 286 388" role="group" aria-label="Body systems. Select one to filter the current tests.">` +
+    // Fixed labels from js/data.js only: no user text reaches this markup.
+    wrap.innerHTML = `<svg viewBox="34 4 330 388" role="group" aria-label="Body systems. Select one to filter the results.">` +
       `<ellipse class="med-skin" cx="110" cy="38" rx="22" ry="27"/>` +
       `<path class="med-skin" d="M96 68 L124 68 C132 78 150 80 158 90 C166 100 168 120 170 150 L176 200 C178 214 166 216 164 204 L156 150 L152 118 L150 170 C150 190 154 200 154 214 L150 290 L146 372 C146 384 124 384 124 372 L122 300 L114 226 L110 222 L106 226 L98 300 L96 372 C96 384 74 384 74 372 L70 290 L66 214 C66 200 70 190 70 170 L68 118 L64 150 L56 204 C54 216 42 214 44 200 L50 150 C52 120 54 100 62 90 C70 80 88 78 96 68 Z"/>` +
-      `<path class="med-organ${on("mind")}" d="M94 34 C94 18 126 18 126 34 C126 44 118 46 110 46 C102 46 94 44 94 34 Z M110 20 L110 46"/>` +
-      `<path class="med-organ${on("resp")}" d="M104 96 C92 98 84 112 84 134 C92 140 102 138 104 132 Z M116 96 C128 98 136 112 136 134 C128 140 118 138 116 132 Z M110 86 L110 100"/>` +
-      `<path class="med-organ${on("cardio")}" d="M120 138 C108 130 108 118 116 118 C119 118 120 121 120 122 C120 121 122 118 125 118 C132 118 132 130 120 138 Z"/>` +
-      `<path class="med-organ${on("fluids")}" d="M110 162 C118 172 122 178 122 184 C122 191 117 196 110 196 C103 196 98 191 98 184 C98 178 102 172 110 162 Z"/>` +
-      `<path class="med-organ${on("muscle")}" d="M82 230 C80 226 86 224 86 229 C87 224 93 226 90 231 L89 281 C93 285 87 289 86 284 C85 289 79 285 83 281 Z"/>` +
-      marks + `</svg>`;
+      organs + marks + `</svg>`;
     const choose = event => {
       const mark = event.target.closest("[data-system]");
       if (!mark || (event.type === "keydown" && !["Enter", " "].includes(event.key))) return;
@@ -840,7 +781,7 @@
 
   function pickSystem(id) {
     system = system === id ? null : id;
-    const visible = system ? SYSTEMS.find(item => item.id === system).ids : ALL_IDS;
+    const visible = system ? systems().find(item => item.id === system).ids : allIds();
     if (!visible.includes(picked)) picked = visible[0];
     render();
   }
@@ -848,7 +789,8 @@
   function readingForm(type) {
     const def = VITALS[type];
     if (!def.fields) {
-      return h("p", { class: "helper-note", text: `ECG is saved by the ${def.device.toLowerCase()}. Manual entry is not available.` });
+      return h("p", { class: "helper-note", text: `${def.name} is captured by the ${def.device.toLowerCase()}, so there is nothing to type in. ` +
+        "Planned: on-device analysis of the recording or image for signal quality, attached to the case summary for the flight surgeon." });
     }
     const error = h("div", { class: "med-error", role: "alert" });
     const inputs = def.fields.map(([label, min, max]) => h("label", {}, `${label} (${def.unit})`,
@@ -881,7 +823,7 @@
         error.textContent = "Check the numbers: the top (systolic) value must be higher than the bottom (diastolic) value.";
         return;
       }
-      store.measurements.push({ id: crypto.randomUUID(), crew: store.activeCrew, type, v, at, source: source.value });
+      store.measurements.push({ id: crypto.randomUUID(), crew: AMIGOS.crewId(), type, v, at, source: source.value });
       if (!saveStore()) {
         store.measurements.pop();
         return;
@@ -906,7 +848,7 @@
     if (!detailType) return;
     const type = detailType;
     const def = VITALS[type];
-    const from = Date.now() - WEEK;
+    const from = Date.now() - span();
     const list = readingsFor(type);
     const width = box.clientWidth - 62;
     const rows = list.slice(-6).reverse().map(r => [
@@ -930,9 +872,9 @@
         h("div", {},
           h("p", { class: "eyebrow", text: `DETAIL · ${crew().name.toUpperCase()}` }),
           h("h2", { id: "med-detail-heading", tabindex: "-1", text: def.name }),
-          h("p", { text: `${def.ref.text}. Source: ${def.ref.source}.` })),
+          h("p", { text: `Why: ${def.why} Reference: ${def.ref.text}. Source: ${def.ref.source}.` })),
         h("button", { class: "secondary", type: "button", text: "Close", onclick: () => { detailType = null; render(); } })),
-      h("h3", { class: "med-sub med-first", text: "Last 7 days" }),
+      h("h3", { class: "med-sub med-first", text: "Selected period" }),
       chart({
         series: seriesFor(type, from), bands: def.bands, from, to: Date.now(), width,
         decimals: def.decimals, label: chartSummary(type, from)
@@ -948,50 +890,84 @@
       readingForm(type)));
   }
 
+  // Daily routine and lab tests on one scale: every result is placed on its own
+  // normal range (25–75%), so different devices and units can be compared.
+  function combinedSeries(from) {
+    const scored = ["sleep", "mind", "nutrition"];
+    const daily = Object.values(routineByDate()).map(entry => {
+      const parts = scored.map(id => {
+        const value = ROUTINE[id].get(entry);
+        return value === null || value === undefined || value === "" ? null : percentOf(Number(value), ROUTINE[id].lo, ROUTINE[id].hi);
+      }).filter(part => part !== null);
+      return parts.length ? { t: Math.min(new Date(`${entry.date}T12:00`).getTime(), Date.now()), v: mean(parts) } : null;
+    }).filter(point => point && point.t >= from).sort((a, b) => a.t - b.t);
+    const byDay = {};
+    ORDER.filter(available).forEach(id => {
+      const def = VITALS[id];
+      if (def.noAuto || def.noRange) return;
+      readingsFor(id).filter(r => r.at >= from).forEach(r => {
+        const band = def.bands.find(b => zoneOf(r.v[b.i], b.lo, b.hi) !== "normal") || def.bands[0];
+        (byDay[dateKey(r.at)] = byDay[dateKey(r.at)] || []).push({ t: r.at, p: percentOf(r.v[band.i], band.lo, band.hi) });
+      });
+    });
+    const lab = Object.values(byDay).map(list => ({ t: mean(list.map(x => x.t)), v: mean(list.map(x => x.p)) }))
+      .sort((a, b) => a.t - b.t);
+    return [{ label: "Lab tests", points: lab }, { label: "Daily routine", points: daily }];
+  }
+
   function renderDashboard() {
     const member = crew();
-    const all = Object.fromEntries(ALL_IDS.map(id => [id, indicator(id)]));
-    const current = system && SYSTEMS.find(item => item.id === system);
-    const visible = current ? current.ids : ALL_IDS;
+    const groups = systems();
+    const ids = allIds();
+    const all = Object.fromEntries(ids.map(id => [id, indicator(id)]));
+    const current = system && groups.find(item => item.id === system);
+    const visible = current ? current.ids : ids;
     if (!visible.includes(picked)) picked = visible[0];
+    const from = Date.now() - span();
 
-    // Body systems: the figure and a matching list of buttons.
+    document.querySelectorAll("[name=medperiod]").forEach(input => { input.checked = Number(input.value) === store.period; });
+
+    // Body systems: the figure, the hazards behind the selected system, and a list of buttons.
     $("#med-body").replaceChildren(bodyFigure(all));
     $("#med-systems").replaceChildren(
-      h("p", { class: "med-quiet", text: current ? current.note : "Tap a marker or a system to filter the current tests." }),
-      ...SYSTEMS.map(item => h("button", {
+      current ? h("p", { class: "med-quiet" }, ...current.hazards.map(key => h("span", { class: "med-hazard", text: DATA.hazards[key] })), current.explain) :
+      h("p", { class: "med-quiet", text: "Tap a marker or a system to see why it matters in space and filter the results." }),
+      ...groups.map(item => h("button", {
           class: `med-system${system === item.id ? " is-on" : ""}`, type: "button",
           "aria-pressed": system === item.id ? "true" : "false", onclick: () => pickSystem(item.id)
         },
         h("span", { text: item.name }), pill(systemZone(item, all)))));
 
-    // Current tests as percent circles.
-    $("#med-cards-title").textContent = current ? `Current tests · ${current.name}` : "Current tests";
+    // Current results as percent circles.
+    $("#med-cards-title").textContent = current ? `Current results · ${current.name}` : "Current results";
     $("#med-cards-sub").textContent = member.name.toUpperCase();
-    $("#med-cards").replaceChildren(...visible.map(id => ringCard(all[id])));
+    $("#med-cards").replaceChildren(...(visible.length ? visible.map(id => ringCard(all[id])) :
+      [h("p", { class: "med-quiet", text: "No tests are ticked for this system. Add them in the Laboratory." })]));
 
-    // 7-day trend for the picked test.
-    const x = all[picked];
-    const points = x.series.reduce((count, s) => count + s.points.length, 0);
+    // Trend for the picked result over the chosen period.
     const trendBox = $("#med-trend");
-    trendBox.replaceChildren(
-      h("div", { class: "med-pane-head" },
-        h("h3", {}, "7-day trend · ", h("b", { text: x.name })),
-        h("button", {
-          class: "med-link", type: "button",
-          text: x.kind === "vital" ? (VITALS[x.id].fields ? "Details & measure" : "How to record") : "Open check-in",
-          onclick: () => x.kind === "vital" ? openDetail(x.id) : setView("checkin")
-        })));
-    trendBox.append(
-      chart({
-        series: x.series, bands: x.bands, from: Date.now() - WEEK, to: Date.now(),
-        width: trendBox.clientWidth, height: 150, decimals: x.decimals,
-        label: `${x.name}, last 7 days: ${points} result${points === 1 ? "" : "s"}, latest ${x.valueText}.`
-      }),
-      h("p", { class: "med-chart-key", text: `${x.bands.length ? "Shaded band = normal range. " : ""}${x.refText}` }));
+    const x = all[picked];
+    trendBox.replaceChildren();
+    if (x) {
+      const points = x.series.reduce((count, item) => count + item.points.length, 0);
+      trendBox.append(
+        h("div", { class: "med-pane-head" },
+          h("h3", {}, `Trend, last ${store.period} days · `, h("b", { text: x.name })),
+          h("button", {
+            class: "med-link", type: "button",
+            text: x.kind === "vital" ? (VITALS[x.id].fields ? "Details & measure" : "How to record") : "Open check-in",
+            onclick: () => x.kind === "vital" ? openDetail(x.id) : setView("checkin")
+          })),
+        chart({
+          series: x.series, bands: x.bands, from, to: Date.now(),
+          width: trendBox.clientWidth, height: 150, decimals: x.decimals,
+          label: `${x.name}, last ${store.period} days: ${points} result${points === 1 ? "" : "s"}, latest ${x.valueText}.`
+        }),
+        h("p", { class: "med-chart-key", text: `${x.bands.length ? "Shaded band = normal range. " : ""}${x.refText}` }));
+    }
 
     // Quick assessment and recommendations (same list as the Daily check-in).
-    const results = ALL_IDS.filter(id => id !== "ecg").map(id => all[id]);
+    const results = ids.map(id => all[id]).filter(r => !(r.kind === "vital" && (VITALS[r.id].noAuto || VITALS[r.id].noRange)));
     const out = results.filter(flagged);
     const open = results.filter(r => r.zone === "recheck" || r.zone === "nodata");
     const banner = out.length ? ["over", "▲", `${out.length} result${out.length > 1 ? "s" : ""} outside the normal range`, out.map(r => r.name).join(", ")] :
@@ -1006,33 +982,46 @@
         [h("p", { class: "med-quiet", text: `No recommendations for ${member.name} right now.` })]),
       h("p", { class: "med-quiet med-rule-note", text: RULE_NOTE }),
       h("div", { class: "med-call" },
-        h("b", { text: "Contact the medical team" }),
-        h("span", { text: "For severe chest pain, trouble breathing, fainting, confusion or any rapidly worsening symptom, contact the medical team immediately using your mission procedure." })));
+        h("b", { text: "Contact the flight surgeon" }),
+        h("span", { text: "For severe chest pain, trouble breathing, fainting, confusion or any rapidly worsening symptom, contact the flight surgeon immediately using your mission procedure." })));
+
+    // Daily routine and lab tests on one chart.
+    const combined = combinedSeries(from);
+    const combinedBox = $("#med-combined");
+    $("#med-combined-sub").textContent = `LAST ${store.period} DAYS`;
+    combinedBox.replaceChildren(
+      chart({
+        series: combined, bands: [{ lo: 25, hi: 75, i: 0 }], from, to: Date.now(),
+        width: combinedBox.clientWidth, height: 190, decimals: 0,
+        label: `Combined score over the last ${store.period} days: ${combined[0].points.length} days of lab tests and ${combined[1].points.length} days of check-ins.`
+      }),
+      h("p", { class: "med-chart-key", text: "● solid Lab tests · ■ dashed Daily routine · shaded band = normal range (25–75%). " +
+          "Each result is placed on its own normal range before averaging, so results from different devices and units can be followed on one scale." }));
 
     // Record a new check-in.
-    const next = ["bp", "hr", "spo2", "rr", "temp"].find(id => all[id].zone !== "normal") || "bp";
+    const dailyTests = ORDER.filter(id => available(id) && VITALS[id].frequency === "Daily");
+    const next = dailyTests.find(id => all[id].zone !== "normal") || dailyTests[0] || ORDER.find(available);
     $("#med-record").replaceChildren(
       h("div", {},
-        h("h2", { text: "Record a new check-in" }),
-        h("p", { class: "med-quiet", text: "Enter today's measurements and how you are feeling." })),
+        h("h2", { text: "Record something new" }),
+        h("p", { class: "med-quiet", text: "Enter a measurement, complete today's check-in, or report a symptom." })),
       h("div", { class: "med-record-actions" },
-        h("button", { class: "primary", type: "button", text: "+ Log measurements", onclick: () => openDetail(next) }),
+        next ? h("button", { class: "primary", type: "button", text: "+ Log measurements", onclick: () => openDetail(next) }) : null,
         h("button", { class: "secondary", type: "button", text: "Daily check-in", onclick: () => setView("checkin") }),
-        h("button", { class: "secondary", type: "button", text: "Log a symptom", onclick: () => openTab("symptoms") })));
+        h("button", { class: "secondary", type: "button", text: "Signs & symptoms", onclick: () => openTab("symptoms") })));
 
-    // Daily health routine: what is done today across both views.
-    const fresh = ["bp", "hr", "spo2", "rr", "temp"].filter(id => {
+    // Daily health routine: what is done today across all views.
+    const fresh = dailyTests.filter(id => {
       const latest = readingsFor(id).at(-1);
       return latest && Date.now() - latest.at < DAY;
     }).length;
-    const entry = member.journalOwner ? routineByDate()[localDate()] : null;
+    const entry = routineByDate()[localDate()];
     const logged = value => value !== null && value !== undefined && value !== "";
-    const unlinked = member.journalOwner ? null : "Journal not linked";
     const tasks = [
-      ["Vitals check", fresh === 5, `${fresh} of 5 measured in the last 24 h`],
-      ["Sleep & mood", Boolean(entry), unlinked || (entry ? "Check-in saved today" : "Check-in not saved yet")],
-      ["Exercise", Boolean(entry) && logged(entry.activity), unlinked || (entry && logged(entry.activity) ? `${entry.activity} min logged` : "Not logged today")],
-      ["Fluids", Boolean(entry) && logged(entry.water), unlinked || (entry && logged(entry.water) ? `${entry.water} mL logged` : "Not logged today")]
+      ["Daily tests", dailyTests.length > 0 && fresh === dailyTests.length, `${fresh} of ${dailyTests.length} measured in the last 24 h`],
+      ["Daily check-in", Boolean(entry), entry ? "Saved today" : "Not saved yet"],
+      ["Exercise", Boolean(entry) && logged(entry.activity), entry && logged(entry.activity) ? `${entry.activity} min logged` : "Not logged today"],
+      ["Fluids", Boolean(entry) && logged(entry.water), entry && logged(entry.water) ? `${entry.water} mL logged` : "Not logged today"]
     ];
     $("#med-routine").replaceChildren(
       h("div", { class: "med-pane-head" },
@@ -1042,18 +1031,6 @@
         h("div", { class: `med-task${done ? " is-done" : ""}` },
           h("b", {}, h("span", { "aria-hidden": "true", text: done ? "✓ " : "○ " }), name),
           h("span", { text: `${done ? "Done" : "To do"} · ${text}` })))));
-
-    renderDetail();
-
-    $("#med-tests").replaceChildren(table(["Test", "Result", "Measured", "Source / device", "Trend", "Status"],
-      SAMPLE_TESTS[member.id].map(test => [
-        test.name,
-        test.value ? `${test.value} ${test.unit}` : "–",
-        test.value ? `${formatTime(loadedAt - test.hoursAgo * HOUR)} · ${ago(loadedAt - test.hoursAgo * HOUR)}` : "–",
-        test.source ? `${test.source} (sample)` : "–",
-        test.trend || "–",
-        h("div", {}, pill(test.status), h("small", { text: test.reason }))
-      ])));
   }
 
   function renderRelated() {
@@ -1070,7 +1047,7 @@
     groupsBox.querySelectorAll("input").forEach(input => { input.checked = input.value === group; });
     const current = GROUPS.find(item => item.id === group);
     const to = Date.now();
-    const from = to - WEEK;
+    const from = to - span();
     const box = $("#med-related");
     box.replaceChildren();
     const width = box.clientWidth - 34;
@@ -1089,10 +1066,10 @@
         chartKey(type, marks.length ? current.symptom.toLowerCase() : null)));
     });
     box.append(h("p", { class: "med-chart-key", text: marks.length ?
-      `${current.symptom} was logged ${marks.length} time${marks.length > 1 ? "s" : ""} in the last 7 days. Shown together for context only; this does not show a cause.` :
-      `No ${current.symptom.toLowerCase()} logged in the last 7 days.` }));
+      `${current.symptom} was logged ${marks.length} time${marks.length > 1 ? "s" : ""} in the selected period. Shown together for context only; this does not show a cause.` :
+      `No ${current.symptom.toLowerCase()} logged in the selected period.` }));
 
-    box.append(h("h2", { class: "med-h2", text: "Routine and symptoms, same 7 days" }));
+    box.append(h("h2", { class: "med-h2", text: "Routine and symptoms, latest days" }));
     if (!member.journalOwner) {
       box.append(h("p", { class: "med-quiet", text: `The routine journal on this device is not linked to ${member.name}. Only symptoms are shown.` }));
     }
@@ -1100,7 +1077,7 @@
     const allSymptoms = symptomsFor();
     const show = (value, unit) => value === null || value === undefined || value === "" ? "Not recorded" : `${value}${unit}`;
     const rows = [];
-    for (let offset = 0; offset < 7; offset++) {
+    for (let offset = 0; offset < Math.min(store.period, 14); offset++) {
       const day = new Date();
       day.setDate(day.getDate() - offset);
       const key = dateKey(day.getTime());
@@ -1109,7 +1086,7 @@
       rows.push([
         offset === 0 ? "Today" : day.toLocaleDateString("en", { weekday: "short", day: "numeric", month: "short" }),
         show(entry?.sleepHours, " h"), show(entry?.activity, " min"), show(entry?.water, " mL"),
-        show(entry?.caffeine, ""), "Not tracked", felt.join(", ") || "None logged"
+        show(entry?.caffeine, ""), show(entry?.meals, ""), felt.join(", ") || "None logged"
       ]);
     }
     box.append(table(["Day", "Sleep", "Exercise", "Water", "Caffeinated drinks", "Meals", "Symptoms"], rows));
@@ -1120,32 +1097,145 @@
     }
   }
 
+  /* ---------- Laboratory: tests ---------- */
+
+  let preset = "all";
+  const PRESETS = [["all", "All tests"], ["daily", "Daily check"], ["monthly", "Monthly check"], ["trauma", "After an injury"]];
+
+  function testRow(test) {
+    const def = VITALS[test.id];
+    const on = available(test.id);
+    const latest = readingsFor(test.id).at(-1);
+    const tick = h("input", {
+      type: "checkbox", checked: on, "aria-label": `${test.name} is carried on this vehicle`,
+      onchange: () => {
+        const previous = store.unavailable;
+        store.unavailable = tick.checked ? previous.filter(id => id !== test.id) : [...previous, test.id];
+        if (!saveStore()) store.unavailable = previous;
+        if (!available(test.id) && detailType === test.id) detailType = null;
+        render();
+        renderRoutineStrip();
+      }
+    });
+    const result = !on ? h("div", { class: "med-test-result" }, h("small", { text: "Unticked: not on this vehicle" })) :
+      latest ? h("div", { class: "med-test-result" },
+        h("span", { text: `${def.format(latest)} ${def.unit}`.trim() }), pill(assess(test.id, latest).key),
+        h("small", { text: `${ago(latest.at)}${latest.sample ? " (sample)" : ""}` })) :
+      h("div", { class: "med-test-result" }, pill("nodata"), h("small", { text: "No result yet" }));
+    return h("div", { class: `med-test${on ? "" : " is-off"}` },
+      tick,
+      h("div", {}, h("b", { text: test.name }), h("small", { text: test.why }),
+        h("small", { text: `${test.frequency} · ${test.device}` })),
+      result,
+      on ? h("button", {
+        class: "secondary", type: "button", text: def.fields ? "Enter result" : "How to record",
+        onclick: () => openDetail(test.id)
+      }) : null);
+  }
+
+  function renderTests() {
+    const presetBox = $("#med-presets");
+    if (!presetBox.querySelector("label")) {
+      PRESETS.forEach(([value, label]) => presetBox.append(h("label", {},
+        h("input", { type: "radio", name: "medpreset", value }), h("span", { text: label }))));
+      presetBox.addEventListener("change", event => {
+        preset = event.target.value;
+        renderTests();
+      });
+    }
+    presetBox.querySelectorAll("input").forEach(input => { input.checked = input.value === preset; });
+    const box = $("#med-testlist");
+    box.replaceChildren();
+    DATA.systems.forEach(item => {
+      const tests = DATA.tests.filter(test => test.system === item.id && (preset === "all" || test.presets.includes(preset)));
+      if (!tests.length) return;
+      box.append(h("section", { class: "med-system-block" },
+        h("h3", { text: item.name }),
+        h("p", {}, ...item.hazards.map(key => h("span", { class: "med-hazard", text: DATA.hazards[key] })), item.explain),
+        ...tests.map(testRow)));
+    });
+  }
+
+  /* ---------- Laboratory: signs and symptoms ---------- */
+
+  let outcome = null;
+
+  // Decides the next step from the ticked signs and symptoms. It never names a condition.
+  function decide(names, severity) {
+    const chosen = DATA.symptoms.filter(item => names.includes(item.name));
+    const level = chosen.some(item => item.urgency === "now") || severity >= 4 ? "now" :
+      chosen.some(item => item.urgency === "tests") ? "tests" : "self";
+    const wanted = [...new Set(chosen.flatMap(item => item.tests))];
+    return {
+      level, names, severity,
+      tests: wanted.filter(available), missing: wanted.filter(id => !available(id)),
+      care: [...new Set(chosen.map(item => item.care).filter(Boolean))]
+    };
+  }
+
+  function outcomeCard(result) {
+    const testButtons = result.tests.length ? h("div", { class: "med-outcome-tests-list" }, ...result.tests.map(id =>
+      h("button", { class: "secondary", type: "button", text: VITALS[id].name, onclick: () => openDetail(id) }))) : null;
+    const missing = result.missing.length ?
+      h("p", { text: `Not on this vehicle (unticked in Tests): ${result.missing.map(id => VITALS[id].name).join(", ")}.` }) : null;
+    const care = result.care.length ? h("ul", {}, ...result.care.map(text => h("li", { text }))) : null;
+    const heading = {
+      now: ["▲ Contact the flight surgeon now", "At least one of these needs a fast response. Use your mission procedure now. If it does not delay the call, these tests help the surgeon:"],
+      tests: ["↻ Run these tests for a better recommendation", "Tap a test to see how to do it and enter the result. Your recommendations update as results come in."],
+      self: ["✓ No tests needed right now", "Here is what you can do yourself. If it gets worse or lasts more than a few days, contact the flight surgeon."]
+    }[result.level];
+    return h("section", { class: `med-outcome med-outcome-${result.level}`, role: "status" },
+      h("h3", { text: heading[0] }),
+      h("p", { text: `For: ${result.names.join(", ")} · strength ${result.severity}/5` }),
+      h("p", { text: heading[1] }),
+      result.level === "self" ? null : testButtons,
+      result.level === "self" ? null : missing,
+      care ? h("p", { text: result.level === "self" ? "What to do:" : "Meanwhile:" }) : null,
+      care,
+      h("p", { class: "med-quiet med-rule-note", text: RULE_NOTE }));
+  }
+
+  function buildSymptomGroups() {
+    const box = $("#med-symptom-groups");
+    if (box.children.length) return;
+    DATA.systems.forEach(item => {
+      const list = DATA.symptoms.filter(entry => entry.system === item.id);
+      if (!list.length) return;
+      box.append(h("fieldset", { class: "med-symptom-group" },
+        h("legend", { text: item.name }),
+        h("div", { class: "chips" }, ...list.map(entry => h("label", {},
+          h("input", { type: "checkbox", name: "symptom", value: entry.name }), h("span", { text: entry.name }))))));
+    });
+  }
+
   function renderSymptoms() {
+    buildSymptomGroups();
     const form = $("#med-symptom-form");
     if (!form.elements.at.value) form.elements.at.value = localDateTime(Date.now());
-    const list = symptomsFor().slice(0, 12);
-    $("#med-symptom-list").replaceChildren(list.length ? table(["Symptom", "Strength", "Noticed", "Note", ""],
-      list.map(s => [
-        s.name, `${s.severity} / 5`, `${formatTime(s.at)} · ${ago(s.at)}`,
-        (s.note || "–") + (s.sample ? " (sample)" : ""),
-        s.sample ? "–" : h("button", {
+    $("#med-outcome").replaceChildren(...(outcome ? [outcomeCard(outcome)] : []));
+    const list = symptomsFor().slice(0, 15);
+    $("#med-symptom-list").replaceChildren(list.length ? table(["Sign or symptom", "Strength", "Noticed", "Note", ""],
+      list.map(entry => [
+        entry.name, `${entry.severity} / 5`, `${formatTime(entry.at)} · ${ago(entry.at)}`,
+        (entry.note || "–") + (entry.sample ? " (sample)" : ""),
+        entry.sample ? "–" : h("button", {
           class: "med-link is-delete", type: "button", text: "Delete",
           onclick: () => {
             if (!confirm("Delete this symptom entry? This cannot be undone.")) return;
             const previous = store.symptoms;
-            store.symptoms = previous.filter(item => item.id !== s.id);
+            store.symptoms = previous.filter(item => item.id !== entry.id);
             if (!saveStore()) store.symptoms = previous;
             render();
             renderRoutineStrip();
           }
         })
-      ])) : h("div", { class: "empty", text: `No symptoms logged for ${crew().name}.` }));
+      ])) : h("div", { class: "empty", text: `No signs or symptoms logged for ${crew().name}.` }));
   }
 
   function summarySections() {
     const member = crew();
     const routine = member.journalOwner ? routineByDate() : {};
-    const week = Date.now() - WEEK;
+    const week = Date.now() - span();
     const felt = symptomsFor().filter(s => s.at >= week);
     const days = Object.keys(routine).sort().reverse().slice(0, 3);
     return [
@@ -1158,7 +1248,7 @@
         `Medications: ${member.medications}`, `Allergies: ${member.allergies}`,
         `Personal baselines: ${ORDER.filter(type => member.baseline[type]).map(type => `${VITALS[type].name} ${member.baseline[type]}`).join("; ") || "not recorded"}`
       ]],
-      ["Latest measurements", ORDER.map(type => {
+      ["Latest measurements", ORDER.filter(available).map(type => {
         const def = VITALS[type];
         const list = readingsFor(type);
         const latest = list.at(-1);
@@ -1167,12 +1257,12 @@
           `${def.name}: ${def.format(latest)} ${def.unit} | ${STATUS[status.key].label} | ${formatTime(latest.at)} | ${latest.source}${latest.sample ? " (sample)" : ""} | Trend: ${trendOf(type, list).text}` :
           `${def.name}: no reading | ${STATUS.nodata.label}`;
       })],
-      ["Symptoms, last 7 days", felt.length ? felt.map(s =>
+      ["Symptoms, selected period", felt.length ? felt.map(s =>
         `${s.name}, strength ${s.severity}/5, ${formatTime(s.at)}${s.note ? ` - ${s.note}` : ""}${s.sample ? " (sample)" : ""}`) : ["None logged"]],
       ["Routine context, latest check-ins", !member.journalOwner ? ["Routine journal on this device is not linked to this crew member"] :
         days.length ? days.map(key => {
           const e = routine[key];
-          return `${key}: sleep ${e.sleepHours ?? "not recorded"} h, exercise ${e.activity ?? "not recorded"} min, water ${e.water ?? "not recorded"} mL, caffeinated drinks ${e.caffeine ?? "not recorded"}, meals not tracked`;
+          return `${key}: sleep ${e.sleepHours ?? "not recorded"} h, exercise ${e.activity ?? "not recorded"} min, water ${e.water ?? "not recorded"} mL, caffeinated drinks ${e.caffeine ?? "not recorded"}, meals ${e.meals ?? "not recorded"}, mind score ${e.mind ?? "not recorded"} / 5`;
         }) : ["No routine check-ins saved"]],
       ["Recommendations shown to the crew member", (list => list.length ? list.map(item =>
         `${item.title} (prompted by: ${item.why.filter(Boolean).join("; ")})`) : ["None"])(buildRecommendations())],
@@ -1221,47 +1311,68 @@
   }
 
   function render() {
+    const info = MODES[mode];
+    if (!info.tabs.includes(tab)) tab = info.tabs[0];
     renderIdentity();
+    $("#med-eyebrow").textContent = info.eyebrow;
+    $("#medical-heading").textContent = info.title;
+    $("#med-intro").textContent = info.text;
+    document.querySelectorAll("#med-tabs label").forEach(label => {
+      const input = label.querySelector("input");
+      label.hidden = label.dataset.mode !== mode;
+      input.checked = input.value === tab;
+    });
     document.querySelectorAll("[data-med-tab]").forEach(panel => { panel.hidden = panel.dataset.medTab !== tab; });
+    if (tab === "tests") renderTests();
+    if (tab === "symptoms") renderSymptoms();
     if (tab === "dash") renderDashboard();
     if (tab === "related") renderRelated();
-    if (tab === "symptoms") renderSymptoms();
     if (tab === "summary") renderSummary();
+    renderDetail();
   }
 
   /* ---------- Wiring ---------- */
-
-  const crewSelect = $("#med-crew");
-  CREW.forEach(member => crewSelect.append(h("option", { value: member.id, text: `${member.name} · ${member.role}` })));
-  crewSelect.value = store.activeCrew;
-  crewSelect.addEventListener("change", () => {
-    store.activeCrew = crewSelect.value;
-    detailType = null;
-    system = null;
-    if (storeReady) saveStore();
-    render();
-    renderRoutineStrip();
-    showToast(`Now showing data for ${crew().name}.`);
-  });
 
   document.querySelectorAll("[name=medtab]").forEach(input => {
     input.addEventListener("change", () => openTab(input.value));
   });
 
-  SYMPTOMS.forEach(name => $("#med-symptom-chips").append(h("label", {},
-    h("input", { type: "radio", name: "symptom", value: name, required: true }), h("span", { text: name }))));
+  document.querySelectorAll("[name=medperiod]").forEach(input => {
+    input.addEventListener("change", () => {
+      store.period = Number(input.value);
+      if (storeReady) saveStore();
+      render();
+      renderRoutineStrip();
+    });
+  });
+
+  // Filter the long list of signs and symptoms as the user types.
+  $("#med-symptom-search").addEventListener("input", event => {
+    const query = event.target.value.trim().toLowerCase();
+    document.querySelectorAll(".med-symptom-group").forEach(groupBox => {
+      let shown = 0;
+      groupBox.querySelectorAll("label").forEach(label => {
+        const match = !query || label.textContent.toLowerCase().includes(query) ||
+          groupBox.querySelector("legend").textContent.toLowerCase().includes(query);
+        label.hidden = !match;
+        if (match) shown++;
+      });
+      groupBox.hidden = !shown;
+    });
+  });
 
   $("#med-symptom-form").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
     const error = $("#med-symptom-error");
     error.textContent = "";
-    if (!form.elements.symptom.value) {
-      error.textContent = "Choose what you are noticing.";
+    const names = [...form.querySelectorAll("[name=symptom]:checked")].map(input => input.value);
+    if (!names.length) {
+      error.textContent = "Tick at least one sign or symptom.";
       return;
     }
     if (!form.elements.symptomSeverity.value) {
-      error.textContent = "Choose how strong it is.";
+      error.textContent = "Choose how strong it is overall.";
       return;
     }
     const at = new Date(form.elements.at.value).getTime();
@@ -1269,23 +1380,40 @@
       error.textContent = "Choose a time that is not in the future.";
       return;
     }
-    store.symptoms.push({
-      id: crypto.randomUUID(), crew: store.activeCrew, name: form.elements.symptom.value,
-      severity: Number(form.elements.symptomSeverity.value), at, note: form.elements.note.value.trim()
-    });
+    const severity = Number(form.elements.symptomSeverity.value);
+    const note = form.elements.note.value.trim();
+    const previous = store.symptoms;
+    store.symptoms = [...previous, ...names.map(name => ({
+      id: crypto.randomUUID(), crew: AMIGOS.crewId(), name, severity, at, note
+    }))];
     if (!saveStore()) {
-      store.symptoms.pop();
+      store.symptoms = previous;
       return;
     }
+    outcome = decide(names, severity);
     form.reset();
-    showToast(`Symptom saved for ${crew().name}.`);
+    $("#med-symptom-search").dispatchEvent(new Event("input"));
+    showToast(`${names.length} sign${names.length > 1 ? "s" : ""} or symptom${names.length > 1 ? "s" : ""} saved for ${crew().name}.`);
     render();
     renderRoutineStrip();
+    $("#med-outcome").scrollIntoView({ block: "center" });
   });
 
   document.addEventListener("amigos:view", event => {
     renderRoutineStrip();
-    if (event.detail === "medical") render();
+    if (MODES[event.detail]) {
+      mode = event.detail;
+      render();
+    }
+  });
+
+  document.addEventListener("amigos:crew", () => {
+    detailType = null;
+    system = null;
+    outcome = null;
+    $("#med-symptom-form").reset();
+    renderRoutineStrip();
+    if (!$("#medical-view").hidden) render();
   });
 
   // Redraw charts when the width changes. Height-only changes (an on-screen

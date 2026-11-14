@@ -1187,3 +1187,352 @@
     flex: 1 1 100%;
   }
 }
+
+/* Shared crew selector in the top bar. */
+.crew-pick {
+  margin-left: auto;
+  margin-right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  color: var(--muted);
+}
+
+.crew-pick select {
+  width: auto !important;
+  min-height: 38px !important;
+  margin: 0 !important;
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  letter-spacing: 0;
+}
+
+.med-crew .med-identity:first-child {
+  border-left: 0;
+  border-top: 0;
+  padding: 0;
+}
+
+/* Daily check-in: four steps, questionnaire, today's plan. */
+.progress {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.question+.question {
+  margin-top: 24px;
+}
+
+#today-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+
+#today-panel h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 18px 0 3px;
+}
+
+#today-panel p {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.today-head {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.today-stat {
+  border: 1px dashed #4a6e83;
+  border-radius: 9px;
+  padding: 10px 13px;
+}
+
+.today-stat.is-done {
+  border: 1px solid #4c9c85;
+  background: #10302a;
+}
+
+.today-stat small,
+.today-idea small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.today-stat b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.today-stat.is-done b {
+  color: var(--med-ok);
+}
+
+.today-ideas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.today-idea {
+  border: 1px solid #39586e;
+  border-radius: 9px;
+  background: #0d2333;
+  padding: 12px 14px;
+  display: grid;
+  gap: 3px;
+}
+
+.today-idea b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sky);
+}
+
+.today-idea span {
+  font-size: 12px;
+  color: #c9dce8;
+}
+
+/* Laboratory: test list. */
+.med-system-block {
+  margin-top: 22px;
+}
+
+.med-system-block h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.med-system-block>p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-hazard {
+  display: inline-block;
+  border: 1px solid #39586e;
+  border-radius: 20px;
+  padding: 2px 9px;
+  margin: 0 5px 4px 0;
+  font-size: 11px;
+  color: #c3dded;
+}
+
+.med-test {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1.5fr) minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 16px;
+  margin-bottom: 8px;
+}
+
+.med-test.is-off {
+  opacity: .6;
+  border-style: dashed;
+}
+
+.med-test input[type=checkbox] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--sky);
+  cursor: pointer;
+}
+
+.med-test b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.med-test small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.med-test-result {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  font-size: 13px;
+}
+
+.med-test .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* Signs and symptoms. */
+.med-search {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.med-symptom-group {
+  margin-top: 18px;
+}
+
+.med-symptom-group legend {
+  margin-bottom: 9px;
+  font-size: 13px;
+  color: #c3dded;
+}
+
+#med-outcome {
+  margin-top: 18px;
+}
+
+.med-outcome {
+  border: 2px solid;
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: var(--panel);
+}
+
+.med-outcome h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.med-outcome p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #d5e6f0;
+}
+
+.med-outcome ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #d5e6f0;
+}
+
+.med-outcome-now {
+  border-color: var(--med-low);
+  background: #3a2126;
+}
+
+.med-outcome-now h3 {
+  color: var(--med-low);
+}
+
+.med-outcome-tests {
+  border-color: var(--med-out);
+}
+
+.med-outcome-tests h3 {
+  color: var(--med-out);
+}
+
+.med-outcome-self {
+  border-color: #4c9c85;
+}
+
+.med-outcome-self h3 {
+  color: var(--med-ok);
+}
+
+.med-outcome-tests-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.med-outcome-tests-list .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.med-try {
+  margin-top: 8px !important;
+  font-size: 12px !important;
+  color: var(--sky) !important;
+}
+
+/* Assessment: period and combined chart. */
+#med-period {
+  margin-top: 20px;
+}
+
+.med-combined {
+  margin-top: 17px;
+}
+
+@media (max-width: 800px) {
+  .crew-pick {
+    margin-right: 12px;
+  }
+
+  .today-head,
+  .today-ideas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .med-test {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .med-test-result,
+  .med-test .secondary {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 540px) {
+  .topbar {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 10px 0;
+  }
+
+  .crew-pick {
+    order: 3;
+    width: 100%;
+    margin: 0;
+  }
+
+  .crew-pick select {
+    flex: 1;
+  }
+
+  .progress li div {
+    font-size: 10px;
+  }
+}
+
+.med-reco.is-urgent {
+  border-left-color: var(--med-low);
+  border-color: var(--med-low);
+  background: #3a2126;
+}
+
+.med-reco.is-urgent h3 {
+  color: var(--med-low);
+}
