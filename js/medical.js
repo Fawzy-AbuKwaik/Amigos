@@ -785,7 +785,8 @@
 
   const BODY_MARKS = {
     brain: [110, 24], eyes: [117, 46], lungs: [93, 110], heart: [120, 130],
-    blood: [131, 158], fluids: [110, 188], muscle: [86, 256]
+    blood: [131, 158], fluids: [110, 188], muscle: [86, 256],
+    metabolic: [110, 220], balance: [134, 66]
   };
   const ORGANS = {
     brain: "M96 30 C96 16 124 16 124 30 C124 37 118 38 110 38 C102 38 96 37 96 30 Z M110 18 L110 38",
@@ -802,9 +803,11 @@
     let marks = "";
     let organs = "";
     systems().forEach(item => {
-      const [x, y] = BODY_MARKS[item.id];
+      const position = BODY_MARKS[item.id];
+      if (!position) return; // Other systems remain accessible in the system list.
+      const [x, y] = position;
       const zone = systemZone(item, all);
-      organs += `<path class="med-organ${on(item.id)}" d="${ORGANS[item.id]}"/>`;
+      if (ORGANS[item.id]) organs += `<path class="med-organ${on(item.id)}" d="${ORGANS[item.id]}"/>`;
       marks += `<g class="med-mark med-mark-${zone}${on(item.id)}" data-system="${item.id}" role="button" tabindex="0" ` +
         `aria-pressed="${system === item.id}" aria-label="${item.name}: ${STATUS[zone].label}">` +
         `<line x1="${x + 10}" y1="${y}" x2="194" y2="${y}"/><circle class="med-mark-halo" cx="${x}" cy="${y}" r="10"/>` +
