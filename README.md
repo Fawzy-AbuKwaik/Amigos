@@ -15,6 +15,13 @@ installation, or build step is required.
 > prescribe treatment, or replace the flight surgeon. Crew profiles are fictional,
 > and recommendation rules are not a mission-approved medical protocol.
 
+## Team
+
+- **Team Leader:** Amir Al-Masri
+- Hasan Abu Ali
+- Anas Shakhsheer
+- Fawzy Abu Kwaik
+
 ## Quick start
 
 From the project folder, start a local server:
