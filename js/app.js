@@ -2,6 +2,13 @@
 const STORAGE_KEY = "amigos-routine-v1";
 const form = document.querySelector("#routine-form");
 const QUESTIONS = AMIGOS.data.questions;
+// The label of a saved answer; older numeric entries that are not one of the choices return null.
+function answerLabel(name, value) {
+  const question = QUESTIONS.find(item => item.name === name);
+  if (!question || value === undefined || value === null || value === "") return null;
+  const index = question.values ? question.values.findIndex(item => String(item) === String(value)) : Number(value) - 1;
+  return index >= 0 ? question.labels.split(",")[index] : null;
+}
 let records = [];
 let editingId = null;
 let currentStep = 0;
@@ -60,8 +67,24 @@ QUESTIONS.forEach(question => {
   const group = element("div", undefined, "rating");
   group.dataset.labels = question.labels;
   group.dataset.name = question.name;
+  if (question.values) group.dataset.values = JSON.stringify(question.values);
   field.append(element("legend", question.text), group);
-  document.querySelector("#mind-questions").append(field);
+  if (question.source) {
+    // Source line; web addresses become links.
+    const note = element("p", undefined, "field-hint question-source");
+    note.append("Source: ");
+    question.source.split(/(https?:\/\/[^\s;,]+)/).forEach(part => {
+      if (/^https?:\/\//.test(part)) {
+        const link = element("a", part);
+        link.href = part;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        note.append(link);
+      } else note.append(part);
+    });
+    field.append(note);
+  }
+  document.querySelector(`#${question.slot || "mind"}-questions`).append(field);
 });
 
 // Every step panel is built before this point, including the questionnaire.
@@ -71,12 +94,13 @@ const lastStep = panels.length - 1;
 
 // Ratings use labeled, keyboard-accessible radio groups.
 document.querySelectorAll(".rating").forEach(group => {
+  const values = group.dataset.values ? JSON.parse(group.dataset.values) : null;
   group.dataset.labels.split(",").forEach((description, index) => {
     const label = document.createElement("label");
     const input = document.createElement("input");
     input.type = "radio";
     input.name = group.dataset.name;
-    input.value = index + 1;
+    input.value = values ? values[index] : index + 1;
     input.required = true;
     const content = document.createElement("span");
     const number = document.createElement("b");
@@ -163,13 +187,19 @@ function validateStep(index) {
     if (windowHours === null || !Number.isFinite(windowHours) || windowHours < 0 || windowHours > 36) {
       return showError("Check your sleep dates. The entered sleep period must be between 0 and 36 hours.");
     }
-    if (Number(form.elements.sleepHours.value) > windowHours + 0.01) {
+    // The sleep answer is a band; its lower end cannot be longer than the window.
+    const sleepQuestion = QUESTIONS.find(item => item.name === "sleepHours");
+    const band = sleepQuestion.values.findIndex(value => String(value) === form.elements.sleepHours.value);
+    if (band >= 0 && sleepQuestion.min[band] > windowHours + 0.01) {
       return showError("Actual sleep cannot be longer than the time between sleep start and wake-up.");
     }
   }
-  if (panels[index].contains(form.elements.caffeineTime) && form.elements.caffeineTime.value &&
-    (form.elements.caffeine.value === "" || Number(form.elements.caffeine.value) === 0)) {
-    return showError("Enter how many caffeinated drinks you had, or clear the last-drink time.");
+  if (panels[index].querySelector('[data-name="caffeineTime"]')) {
+    const drinks = form.elements.caffeine.value;
+    const last = form.elements.caffeineTime.value;
+    if (drinks !== "" && last !== "" && (Number(drinks) === 0) !== (last === "none")) {
+      return showError("Your caffeine answers do not match. If you had no caffeine, answer None and No caffeine today.");
+    }
   }
   return true;
 }
@@ -270,7 +300,7 @@ form.addEventListener("submit", event => {
     showError("An entry already exists for this date and mission phase. Open My journal to edit it.");
     return;
   }
-  ["sleepHours", "sleepQuality", "appetite", ...QUESTIONS.map(question => question.name)].forEach(name => {
+  ["sleepQuality", "appetite", ...QUESTIONS.filter(question => !question.textValue).map(question => question.name)].forEach(name => {
     entry[name] = Number(entry[name]);
   });
   // An omitted optional measurement is unknown, not a measured zero.
@@ -278,7 +308,8 @@ form.addEventListener("submit", event => {
     entry[name] = entry[name] === "" ? null : Number(entry[name]);
   });
   // One number for the questionnaire, so it can be followed over time.
-  entry.mind = Number((QUESTIONS.reduce((sum, question) => sum + entry[question.name], 0) / QUESTIONS.length).toFixed(1));
+  const mental = QUESTIONS.filter(question => question.mind !== false);
+  entry.mind = Number((mental.reduce((sum, question) => sum + entry[question.name], 0) / mental.length).toFixed(1));
   entry.id = editingId || crypto.randomUUID();
   entry.updatedAt = new Date().toISOString();
   if (persist([...records.filter(record => record.id !== entry.id), entry])) {
@@ -336,14 +367,14 @@ function renderHistory() {
     header.append(title, actions);
     const metrics = element("div", undefined, "metrics");
     const values = [
-      ["Actual sleep", displayValue(record.sleepHours, " h")],
+      ["Actual sleep", answerLabel("sleepHours", record.sleepHours) ?? displayValue(record.sleepHours, " h")],
       ["Sleep quality", displayValue(record.sleepQuality, " / 5")],
       ["Appetite", displayValue(record.appetite, " / 5")],
-      ["Meals", displayValue(record.meals)],
-      ["Water", displayValue(record.water, " mL")],
+      ["Meals", answerLabel("meals", record.meals) ?? displayValue(record.meals)],
+      ["Water", answerLabel("water", record.water) ?? displayValue(record.water, " mL")],
       ["Mind score", displayValue(record.mind ?? record.mood, " / 5")],
-      ["Exercise", displayValue(record.activity, " min")],
-      ["Caffeinated drinks", displayValue(record.caffeine)]
+      ["Exercise", answerLabel("activity", record.activity) ?? displayValue(record.activity, " min")],
+      ["Caffeinated drinks", answerLabel("caffeine", record.caffeine) ?? displayValue(record.caffeine)]
     ];
     values.forEach(([name, value]) => {
       const metric = element("div");
@@ -352,12 +383,11 @@ function renderHistory() {
     });
     card.append(header, metrics);
     card.append(element("p", `Sleep window: ${record.sleepStart.replace("T", " ")} to ${record.sleepEnd.replace("T", " ")}`));
-    const answers = QUESTIONS.filter(question => record[question.name]).map(question => {
-      const label = question.labels.split(",")[record[question.name] - 1];
-      return `${question.name[0].toUpperCase()}${question.name.slice(1)}: ${label}`;
+    const answers = QUESTIONS.filter(question => !question.metric && answerLabel(question.name, record[question.name])).map(question => {
+      return `${question.short || question.name}: ${answerLabel(question.name, record[question.name])}`;
     });
     if (answers.length) card.append(element("p", `Mental health answers: ${answers.join(" / ")}`));
-    if (record.caffeineTime) card.append(element("p", `Last caffeinated drink: ${record.caffeineTime}`));
+    if (record.caffeineTime) card.append(element("p", `Last caffeinated drink: ${answerLabel("caffeineTime", record.caffeineTime) ?? record.caffeineTime}`));
     if (record.factors?.length) card.append(element("p", `Context: ${record.factors.join(" / ")}`));
     if (record.notes) card.append(element("p", record.notes));
     container.append(card);
@@ -398,7 +428,7 @@ function streakDays() {
 // Activities matched to the latest answers; a rotating mix when nothing is low.
 function suggestedActivities(latest) {
   const activities = AMIGOS.data.activities;
-  const low = latest ? QUESTIONS.filter(question => latest[question.name] && latest[question.name] <= 2)
+  const low = latest ? QUESTIONS.filter(question => question.low !== false && latest[question.name] && latest[question.name] <= 2)
     .map(question => question.tag) : [];
   if (latest && latest.sleepQuality <= 2) low.push("sleep");
   const matched = activities.filter(activity => activity.goodFor.some(tag => low.includes(tag)));
