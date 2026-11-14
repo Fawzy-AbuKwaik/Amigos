@@ -363,4 +363,15 @@ test('failed reading edits restore the original in-memory and persisted values',
   assert.equal(m.readingsFor('spo2').at(-1).v[0], 97);
   assert.equal(JSON.parse(storage.get('amigos-medical-v1')).measurements[0].v[0], 97);
 });
+
+
+test('BP custom tolerance includes exact +/-15 boundaries and checks both components', () => {
+  reset();
+  for (const v of [[120,80], [130,85], [105,65], [135,95]]) assert.equal(m.assess('bp', reading('bp', v)).key, 'normal');
+  for (const v of [[136,80], [120,96]]) assert.equal(m.assess('bp', reading('bp', v)).key, 'over');
+  for (const v of [[104,80], [120,64]]) assert.equal(m.assess('bp', reading('bp', v)).key, 'below');
+  assert(m.assess('bp', reading('bp', [135,95])).reason.includes('not a clinical normal range'));
+  m.store.measurements.push(reading('bp', [130,85]));
+  assert(m.testRow(data.tests.find(t => t.id === 'bp')).textContent.includes('Within custom band'));
+});
 attachmentChecks().then(() => console.log(`${checks} regression groups passed.`)).catch(error => { console.error(error); process.exitCode = 1; });

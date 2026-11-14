@@ -272,8 +272,9 @@
       h("a", { href: part, target: "_blank", rel: "noopener noreferrer", text: part }) : part);
   }
 
-  const pill = key => h("span", { class: `med-status med-${key}` },
-    h("span", { "aria-hidden": "true", text: STATUS[key].icon }), STATUS[key].label);
+  const statusLabel = (key, type) => key === "normal" && VITALS[type]?.customReference ? "Within custom band" : STATUS[key].label;
+  const pill = (key, type) => h("span", { class: `med-status med-${key}` },
+    h("span", { "aria-hidden": "true", text: STATUS[key].icon }), statusLabel(key, type));
 
   /* ---------- Assessment: reference comparison only, never a diagnosis ---------- */
 
@@ -292,7 +293,7 @@
     if (def.noRange) return { key: "recorded", reason: "No verified general reference loaded. Value recorded without automatic classification." };
     const problem = def.check(latest);
     return problem ? { key: problem.startsWith("Above") ? "over" : "below", reason: problem } :
-      { key: "normal", reason: "Inside the general adult reference." };
+      { key: "normal", reason: def.customReference ? `Inside the project tolerance band. ${def.ref.text}.` : "Inside the general adult reference." };
   }
 
   function trendOf(type, list) {
@@ -414,7 +415,7 @@
   function chartKey(type, withMarker) {
     const def = VITALS[type];
     const parts = def.series.map((label, index) => `${index ? "■ dashed" : "● solid"} ${label}`);
-    if (def.bands.length) parts.push("shaded band = general adult reference");
+    if (def.bands.length) parts.push(def.customReference ? "shaded band = project tolerance, not clinical normal" : "shaded band = general adult reference");
     if (withMarker) parts.push(`◆ ${withMarker} logged`);
     return h("p", { class: "med-chart-key", text: parts.join(" · ") });
   }
@@ -597,7 +598,7 @@
     // A low reading does not establish dehydration, regardless of water intake.
     if (has("bp") && bp.zone === "below") {
       list.push({
-        title: "Recheck low blood pressure and review symptoms",
+        title: "Recheck blood pressure below the selected band and review symptoms",
         action: "Repeat the measurement using the device procedure. If you feel dizzy or unwell, pause your task and contact the flight surgeon. Follow your mission fluid plan; the app cannot determine the cause or prescribe extra fluid. Fainting, confusion or rapidly worsening symptoms need immediate medical contact.",
         why: [line(bp), water.zone === "nodata" ? "Water: not recorded in the Daily check-in" : line(water), symptomLine("Dizziness")],
         mental: "Move slowly when you change position, and pause before starting a task.",
@@ -652,7 +653,7 @@
       const tags = ACTIVITY_TAGS[id];
       if (flagged(x) && x.avgZone === x.zone) {
         list.push({
-          title: `${x.name} has stayed ${x.zone === "below" ? "below" : "over"} the normal range`,
+          title: `${x.name} has stayed ${x.zone === "below" ? "below" : "over"} the ${VITALS[id]?.customReference ? "project tolerance band" : "normal range"}`,
           action: "This has been out of range for a while, not just today. Tell the flight surgeon.",
           why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
           activities: tags && activitiesFor(tags),
@@ -857,7 +858,7 @@
       h("span", { class: "med-ring-body" },
         h("span", { class: "med-ring-name", text: x.name }),
         h("span", { class: "med-ring-value" }, x.bigText, x.unit && x.bigText !== "–" ? h("small", { text: x.unit }) : null),
-        pill(x.zone)),
+        pill(x.zone, x.id)),
       h("span", { class: "med-ring-foot" },
         h("span", { text: x.reason }),
         h("span", { text: x.kind === "routine" ? "Self-reported check-in answer" : x.avgText ? `Period average ${x.avgText}${x.avgZone ? ` · ${STATUS[x.avgZone].label}` : ""}` : "Period average: not enough results" }),
@@ -1375,7 +1376,7 @@
           width: trendBox.clientWidth, height: 150, decimals: x.decimals,
           label: `${x.name}, last ${store.period} days: ${points} result${points === 1 ? "" : "s"}, latest ${x.valueText}.`
         }),
-        h("p", { class: "med-chart-key", text: `${x.bands.length ? "Shaded band = normal range. " : ""}${x.refText}` }));
+        h("p", { class: "med-chart-key", text: `${x.bands.length ? "Shaded band = selected reference. " : ""}${x.refText}` }));
     }
 
     // Quick assessment and recommendations (same list as the Daily check-in).
@@ -1470,7 +1471,7 @@
       box.append(h("div", { class: "med-chart-block" },
         h("div", { class: "med-card-head" },
           h("h3", { text: `${def.name}${latest ? ` · latest ${def.format(latest)} ${def.unit}` : ""}` }),
-          pill(assess(type, latest).key)),
+          pill(assess(type, latest).key, type)),
         chart({
           series: seriesFor(type, from), bands: def.bands, from, to, width, height: 150,
           decimals: def.decimals, markers: marks.map(s => s.at), label: chartSummary(type, from)
@@ -1529,7 +1530,7 @@
       }
     });
     const result = latest ? h("div", { class: "med-test-result" },
-        h("span", { text: `${def.format(latest)} ${def.unit}`.trim() }), pill(assess(test.id, latest).key),
+        h("span", { text: `${def.format(latest)} ${def.unit}`.trim() }), pill(assess(test.id, latest).key, test.id),
         h("small", { text: `${ago(latest.at)}${latest.sample ? " (sample)" : ""}` })) :
       h("div", { class: "med-test-result" }, pill("nodata"), h("small", { text: "No result yet" }));
     return h("div", { class: `med-test${on ? "" : " is-off"}` },
@@ -1682,7 +1683,7 @@
         const latest = list.at(-1);
         const status = assess(type, latest);
         return latest ?
-          `${def.name}: ${def.format(latest)} ${def.unit} | ${STATUS[status.key].label} | ${formatTime(latest.at)} | ${latest.source}${latest.sample ? " (sample)" : ""} | Trend: ${trendOf(type, list).text}` :
+          `${def.name}: ${def.format(latest)} ${def.unit} | ${statusLabel(status.key, type)} | ${formatTime(latest.at)} | ${latest.source}${latest.sample ? " (sample)" : ""} | Trend: ${trendOf(type, list).text}` :
           `${def.name}: no reading | ${STATUS.nodata.label}`;
       })],
       ["Tests excluded from automatic assessment", (list => list.length ? [list.join(", ")] : ["None unticked"])(DATA.tests.filter(test => !available(test.id)).map(test => test.name))],
@@ -1697,7 +1698,7 @@
         `${item.title} (prompted by: ${item.why.filter(Boolean).join("; ")})`) : ["None"])(buildRecommendations())],
       ["Notes", [
         "Self-assessment and decision-support summary. Not a diagnosis.",
-        "Statuses compare readings with general healthy-adult references. Mission-approved alert limits were not loaded.",
+        "Statuses compare readings with the stated references. Blood pressure uses a user-defined project tolerance, not clinical normal limits. Mission-approved alert limits were not loaded.",
         "Recommendations come from a prototype rule set that is not yet mission-approved."
       ]]
     ];

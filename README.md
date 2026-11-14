@@ -61,6 +61,13 @@ both the Daily check-in and Assessment.
   and symptoms separately from personal measurements. Routine check-ins remain
   personal, and an on-screen notice identifies this mode.
 
+Blood pressure uses a user-requested **project tolerance of +/-15 mmHg around
+120/80**: systolic 105-135 and diastolic 65-95, inclusive. Both must be within
+the band. The UI calls this **Within custom band**, not a clinical normal reading.
+AHA clinical normal is below 120 systolic and below 80 diastolic; the project
+tolerance must not be used to establish clinical normality. The imported research
+references remain unchanged.
+
 ### Saving readings and choosing tests
 
 In Laboratory, use **Tests** when you know which measurement to record, or
