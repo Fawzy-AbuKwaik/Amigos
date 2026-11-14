@@ -187,6 +187,12 @@
     return new Date(ts - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   }
 
+  // Text with web addresses turned into links.
+  function withLinks(text) {
+    return String(text).split(/(https?:\/\/[^\s;,)]+)/).map(part => /^https?:\/\//.test(part) ?
+      h("a", { href: part, target: "_blank", rel: "noopener noreferrer", text: part }) : part);
+  }
+
   const pill = key => h("span", { class: `med-status med-${key}` },
     h("span", { "aria-hidden": "true", text: STATUS[key].icon }), STATUS[key].label);
 
@@ -339,7 +345,7 @@
   const ROUTINE = {
     sleep: {
       name: "Sleep", unit: "h", get: e => e.sleepHours, decimals: 1, lo: 7, hi: 9, short: "the 7–9 h reference",
-      ref: "7–9 h of sleep per night. Source: National Sleep Foundation (adults)."
+      ref: "7–9 h of sleep per night."
     },
     mind: {
       name: "Mind & mood", unit: "/ 5", get: e => e.mind ?? e.mood, decimals: 1, lo: 3, hi: 5, short: "the 3–5 part of the scale",
@@ -381,7 +387,7 @@
       bigText: latest ? def.format(latest) : "–",
       valueText: latest ? `${def.format(latest)} ${def.unit}`.trim() : "no reading",
       when: latest ? `${ago(latest.at)} · ${latest.source}${latest.sample ? " (sample)" : ""}` : "Not measured",
-      refText: `${def.ref.text}. Source: ${def.ref.source}.`,
+      refText: `${def.ref.text}.`,
       decimals: def.decimals, bands: def.bands, series: seriesFor(id, Date.now() - span())
     };
     if (!latest || def.noAuto || def.noRange) return out;
@@ -494,7 +500,7 @@
           title: `Contact the flight surgeon now: ${entry.name.toLowerCase()}`,
           action: "This needs a fast response. Contact the flight surgeon using your mission procedure. Run tests only if that does not delay the call.",
           why: [logged, info.urgency === "now" ? "This symptom is marked as needing a fast response" : "You rated it strong or severe"],
-          rule: "now",
+          rule: "now", symptoms: [info],
           button: ["Open case summary", () => openTab("summary")]
         });
       } else if (info.urgency === "tests") {
@@ -505,7 +511,7 @@
             action: `These results will give you a better recommendation: ${missing.map(id => VITALS[id].name).join(", ")}.`,
             why: [logged, "No result for these tests since the symptom was logged"],
             mental: info.care,
-            rule: "tests", tests: missing,
+            rule: "tests", tests: missing, symptoms: [info],
             button: ["Enter a result", () => openDetail(missing[0])]
           });
         }
@@ -516,7 +522,7 @@
     if (has("bp") && bp.zone === "below" && water.zone !== "normal" && water.zone !== "over") {
       list.push({
         title: "Check your fluids, then recheck blood pressure",
-        action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it stays below the reference or you feel dizzy, contact the flight surgeon using your mission procedure.",
+        action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it is still low or you feel dizzy, contact the flight surgeon.",
         why: [line(bp), water.zone === "nodata" ? "Water: not recorded in the Daily check-in" : line(water), symptomLine("Dizziness")],
         mental: "Move slowly when you change position, and pause before starting a task.",
         rule: "bpfluids", tests: ["bp"],
@@ -560,7 +566,7 @@
       if (flagged(x) && x.avgZone === x.zone) {
         list.push({
           title: `${x.name} has stayed ${x.zone === "below" ? "below" : "over"} the normal range`,
-          action: "The current result and the average for the period are both outside the normal range. Tell the flight surgeon using your mission procedure.",
+          action: "This has been out of range for a while, not just today. Tell the flight surgeon.",
           why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
           activities: tags && activitiesFor(tags),
           rule: "stayed", tests: vital ? [id] : [],
@@ -570,7 +576,7 @@
         list.push({
           title: vital ? `Recheck your ${lower(x)}` : `${x.name} is ${x.zone === "below" ? "below" : "over"} your normal range`,
           action: vital ?
-            "This result differs from your average for the period. Repeat the measurement using the steps shown. If it is still outside the normal range, contact the flight surgeon using your mission procedure." :
+            "One reading can be off. Rest a few minutes and measure once more. If it is still out of range, contact the flight surgeon." :
             "Follow your mission plan today and log it in the Daily check-in. If it continues for several days, tell the flight surgeon.",
           why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
           activities: tags && activitiesFor(tags),
@@ -580,7 +586,7 @@
       } else if (x.zone === "normal" && x.avgZone && x.avgZone !== "normal") {
         list.push({
           title: `Keep watching your ${lower(x)}`,
-          action: `The current result is normal, but the average for the period is ${x.avgZone === "below" ? "below" : "over"} the normal range. Keep recording it so the trend is clear.`,
+          action: `Today's result is fine, but it has been running ${x.avgZone === "below" ? "low" : "high"} lately. Keep recording it so the trend is clear.`,
           why: [line(x), `Reference: ${x.refText}`],
           rule: "watch", tests: vital ? [id] : [],
           button: vital ? measure(id) : checkin
@@ -619,14 +625,12 @@
         h("p", { text: item.action }),
         item.mental ? h("p", { class: "med-try", text: `Mental approach: ${item.mental}` }) : null,
         item.activities && item.activities.length ?
-        h("p", { class: "med-try", text: `Activities to try: ${item.activities.join(" · ")}` }) : null,
-        h("div", { class: "med-why-title", text: "Prompted by" }),
-        h("ul", { class: "med-why" }, ...item.why.filter(Boolean).map(text => h("li", { text }))),
-        evidencePanel(item)),
+        h("p", { class: "med-try", text: `Activities to try: ${item.activities.join(" · ")}` }) : null),
       button);
   }
 
-  // "Evidence" button: what the recommendation rests on, from the content file.
+  // Kept for the documentation build; not shown in the interface (the team wants the screens simple).
+  // eslint-disable-next-line no-unused-vars
   function evidencePanel(item) {
     const rule = (DATA.rules || {})[item.rule];
     if (!rule) return null;
@@ -644,6 +648,13 @@
       rows.push(h("li", { text: `${test.name}: ${test.refText}. Source: ${test.source}.` }));
       const system = DATA.systems.find(s => s.id === test.system);
       if (system) rows.push(h("li", { text: `Spaceflight link (${system.hazards.map(k => DATA.hazards[k]).join(", ")}): ${system.explain}` }));
+    });
+    (item.symptoms || []).forEach(info => {
+      const parts = [];
+      if (info.urgentWhen) parts.push(`Becomes urgent when: ${info.urgentWhen}.`);
+      if (info.hazards) parts.push(`Related hazards: ${info.hazards}.`);
+      parts.push(info.source ? `Source: ${info.source}` : "Source pending.");
+      rows.push(h("li", {}, h("b", { text: `${info.name}: ` }), ...withLinks(parts.join(" "))));
     });
     const placeholder = rows.some(r => r.textContent.includes("PLACEHOLDER"));
     return h("details", { class: "med-evidence" },
@@ -910,7 +921,7 @@
         h("div", {},
           h("p", { class: "eyebrow", text: `DETAIL · ${crew().name.toUpperCase()}` }),
           h("h2", { id: "med-detail-heading", tabindex: "-1", text: def.name }),
-          h("p", { text: `Why: ${def.why} Reference: ${def.ref.text}. Source: ${def.ref.source}.` })),
+          h("p", { text: `Why: ${def.why} Reference: ${def.ref.text}.` })),
         h("button", { class: "secondary", type: "button", text: "Close", onclick: () => { detailType = null; render(); } })),
       h("h3", { class: "med-sub med-first", text: "Selected period" }),
       chart({
@@ -953,6 +964,209 @@
     return [{ label: "Lab tests", points: lab }, { label: "Daily routine", points: daily }];
   }
 
+
+  /* ---------- Mission hazards: NASA's five hazards as editable parameters ---------- */
+
+  // Values come from NASA pages that were read; `src` says which. A value with no NASA figure is null and
+  // shows as "not loaded". Nothing is rated good or bad: each ring only shows the value against a display
+  // scale, and any value can be typed over by hand for testing.
+  const HRP = "NASA, 5 Hazards of Human Spaceflight, https://www.nasa.gov/hrp/hazards/";
+  const MOON = "NASA Science, Moon Facts, https://science.nasa.gov/moon/facts/";
+  const PLACES = [
+    { id: "iss", name: "International Space Station (low Earth orbit)", values: {
+      radiation: { v: null, src: "No ISS dose rate on the NASA pages read. Enter the mission's dosimeter value." },
+      gravity: { v: 0, src: "Weightless in orbit. " + HRP },
+      distance: { v: 386, src: "The station orbits 240 miles above Earth, about 386 km. NASA, The Human Body in Space, https://www.nasa.gov/humans-in-space/the-human-body-in-space/" },
+      delay: { v: null, src: "Not stated on the NASA pages read." },
+      journey: { v: null, src: "Not stated on the NASA pages read." },
+      pressure: { v: null, src: "No cabin pressure on the NASA pages read. Enter the mission's value." } } },
+    { id: "moon", name: "Moon surface base", values: {
+      radiation: { v: null, src: "No Moon surface dose rate on the NASA pages read." },
+      gravity: { v: 0.17, src: "One-sixth of Earth's gravity. " + MOON },
+      distance: { v: 384400, src: "Average distance. " + MOON },
+      journey: { v: 3, src: "NASA contrasts the Mars trip with a three-day lunar trip. " + HRP },
+      delay: { v: 0.02, src: "Calculated: 384,400 km (" + MOON + ") at the speed of light is about 1.3 seconds." },
+      pressure: { v: null, src: "Not loaded." } } },
+    { id: "marsTransit", name: "Mars transit spacecraft", values: {
+      radiation: { v: 1.8, src: "NASA JPL, Data From NASA Rover's Voyage to Mars Aids Planning (2013), average 1.8 mSv/day of galactic cosmic rays on the trip, quiet solar period. https://www.jpl.nasa.gov/news/data-from-nasa-rovers-voyage-to-mars-aids-planning/" },
+      gravity: { v: 0, src: "Weightless on the six-month trek. https://www.nasa.gov/hrp/hazard-gravity-fields/" },
+      distance: { v: 225000000, src: "Mars is 140 million miles from Earth on average, about 225 million km. " + HRP },
+      journey: { v: 180, src: "A six-month trek. https://www.nasa.gov/hrp/hazard-gravity-fields/" },
+      delay: { v: 20, src: "NASA says up to 20 minutes one way. " + HRP },
+      pressure: { v: null, src: "Not loaded." } } },
+    { id: "marsSurface", name: "Mars surface base", values: {
+      radiation: { v: 0.67, src: "NASA, NASA Rover Results Include First Age Measurement on Mars and Help for Human Exploration (2013), average 0.67 mSv/day, Aug 2012 to Jun 2013. https://www.nasa.gov/news-release/nasa-rover-results-include-first-age-measurement-on-mars-and-help-for-human-exploration/" },
+      gravity: { v: 0.38, src: "Three-eighths of Earth's gravity. " + HRP },
+      distance: { v: 225000000, src: "Mars is 140 million miles from Earth on average, about 225 million km. " + HRP },
+      journey: { v: 180, src: "A six-month trek. https://www.nasa.gov/hrp/hazard-gravity-fields/" },
+      delay: { v: 20, src: "NASA says up to 20 minutes one way. " + HRP },
+      pressure: { v: null, src: "Not loaded." } } },
+    { id: "analog", name: "Earth analog mission (like HERA)", values: {
+      radiation: { v: null, src: "Not loaded." },
+      gravity: { v: 1, src: "Earth gravity." },
+      distance: { v: 0, src: "On Earth." },
+      journey: { v: null, src: "Not applicable." },
+      delay: { v: 5, src: "NASA, Houston, Do You Copy? HERA Crew Navigates Communication Delays (2022), delays of up to five minutes each way. https://www.nasa.gov/humans-in-space/houston-do-you-copy-hera-crew-navigates-communication-delays/" },
+      pressure: { v: null, src: "Not loaded." } } }
+  ];
+
+  // One parameter per hazard, shown as a ring. `max` is only the display scale.
+  const HAZARD_PARAMS = [
+    { key: "radiation", param: "radiation", label: "Radiation dose rate", unit: "mSv/day", max: 3, decimals: 2, step: 0.01 },
+    { key: "isolation", param: "mission", label: "Days into the mission", unit: "days", max: null, decimals: 0, step: 1 },
+    { key: "distance", param: "distance", label: "Distance from Earth", unit: "km", log: [100, 225000000], decimals: 0, step: 1,
+      extras: [
+        { param: "journey", label: "One-way journey time", unit: "days", step: 1 },
+        { param: "delay", label: "One-way message delay", unit: "min", step: 0.01 }
+      ] },
+    { key: "gravity", param: "gravity", label: "Gravity", unit: "g", max: 1, decimals: 2, step: 0.01 },
+    { key: "environment", param: "pressure", label: "Cabin pressure", unit: "kPa", max: 101.3, decimals: 1, step: 0.1 }
+  ];
+
+  // What NASA's hazard pages say, in short. Health risks are a watch list, never a diagnosis.
+  const HAZARD_INFO = {
+    radiation: {
+      about: "Invisible ionizing radiation from galactic cosmic rays and solar storms, outside Earth's magnetic field and atmosphere.",
+      watch: ["Increased cancer risk", "Damage to the central nervous system", "Altered cognitive function", "Reduced motor function", "Behavioural changes"],
+      url: "https://www.nasa.gov/hrp/hazard-space-radiation/", title: "NASA, Hazard: Space Radiation (updated Jun 2025)"
+    },
+    isolation: {
+      about: "Behavioural responses of crews isolated and confined in a small space for a long time. Sleep loss, circadian disruption and work overload add to it.",
+      watch: ["Decreased performance", "Behavioural, cognitive or psychiatric problems", "Sleep loss and fatigue", "Adverse health outcomes"],
+      url: "https://www.nasa.gov/hrp/hazard-isolation-and-confinement/", title: "NASA, Hazard: Isolation and Confinement (updated Aug 2024)"
+    },
+    distance: {
+      about: "How far the crew is from Earth, how long the journey takes and how long messages take. Supplies, equipment and medical care get harder to reach, so everything must be brought along.",
+      watch: ["Equipment failures and medical emergencies with limited medical resources", "Need for self-sufficiency and planning", "All food, equipment and medical supplies must be carried"],
+      url: "https://www.nasa.gov/hrp/hazard-distance-from-earth/", title: "NASA, Hazard: Distance From Earth (updated Aug 2024)"
+    },
+    gravity: {
+      about: "Weightlessness in flight, partial gravity on the Moon or Mars, then readjusting to Earth's gravity.",
+      watch: ["Dizziness and space motion sickness", "Lightheadedness or fainting after weightlessness", "Bone loss (about 1 to 1.5% of mineral density a month on average) and muscle loss",
+        "Vision problems from fluid shifting toward the head", "Kidney stone risk from dehydration and calcium loss"],
+      url: "https://www.nasa.gov/hrp/hazard-gravity-fields/", title: "NASA, Hazard: Gravity Fields (updated Aug 2024)"
+    },
+    environment: {
+      about: "Keeping a safe spacecraft ecosystem: temperature, pressure, lighting, noise, crowding and microbes.",
+      watch: ["Microbes that change and spread more easily in a closed habitat", "Raised stress hormones and altered immune response, which may raise allergy or illness risk (NASA says more research is needed)"],
+      url: "https://www.nasa.gov/hrp/hazard-hostile-closed-environments/", title: "NASA, Hazard: Hostile/Closed Environments (updated Aug 2024)"
+    }
+  };
+
+  if (!store.env || typeof store.env !== "object") store.env = { place: "iss", edits: {} };
+  if (!PLACES.some(item => item.id === store.env.place)) store.env.place = "iss";
+  if (!store.env.edits || typeof store.env.edits !== "object") store.env.edits = {};
+
+  const place = () => PLACES.find(item => item.id === store.env.place);
+  // The value shown: a manual edit if there is one, otherwise NASA's figure for this place.
+  function hazardValue(def) {
+    const edits = store.env.edits;
+    if (Object.prototype.hasOwnProperty.call(edits, def.param)) return { v: edits[def.param], src: "Changed by hand for testing." };
+    if (def.param === "mission") return { v: crew().missionDay, src: `From ${crew().name}'s profile (sample crew data).` };
+    return place().values[def.param];
+  }
+
+  function hazardRing(def, value) {
+    const radius = 25;
+    const length = 2 * Math.PI * radius;
+    const max = def.max || crew().missionLength;
+    const has = typeof value === "number" && Number.isFinite(value);
+    const clamp = n => Math.min(100, Math.max(0, n));
+    const pct = !has ? null : def.log ?
+      (value <= 0 ? 0 : clamp((Math.log10(value) - Math.log10(def.log[0])) / (Math.log10(def.log[1]) - Math.log10(def.log[0])) * 100)) :
+      clamp(value / max * 100);
+    const compact = n => n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e8 ? 0 : 1)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}k` : String(Math.round(n));
+    const shown = !has ? "–" : def.log ? compact(value) : Number(value).toFixed(def.decimals);
+    const wrap = h("span", { class: "med-ring med-ring-hazard", "aria-hidden": "true" });
+    wrap.innerHTML = `<svg viewBox="0 0 64 64" width="72" height="72">` +
+      `<circle class="med-ring-track" cx="32" cy="32" r="${radius}"/>` +
+      (pct === null || pct === 0 ? "" : `<circle class="med-ring-fill" cx="32" cy="32" r="${radius}" ` +
+        `stroke-dasharray="${(length * pct / 100).toFixed(1)} ${length.toFixed(1)}" transform="rotate(-90 32 32)"/>`) +
+      `<text class="med-ring-text" x="32" y="36" text-anchor="middle">${shown}</text></svg>`;
+    return wrap;
+  }
+
+  function valueInput(def, value) {
+    const input = h("input", {
+      type: "number", step: String(def.step), min: "0", inputmode: "decimal", value: typeof value === "number" ? String(value) : "",
+      "aria-label": `${def.label} (${def.unit})`,
+      onchange: () => {
+        const raw = input.value.trim();
+        const number = Number(raw);
+        store.env.edits[def.param] = raw === "" || !Number.isFinite(number) || number < 0 ? null : number;
+        saveStore();
+        render();
+      }
+    });
+    return input;
+  }
+
+  // In words: what a full ring means.
+  function scaleNote(def, max) {
+    if (def.log) return "Log scale from 100 km. A full ring is the average distance to Mars (about 225 million km).";
+    if (def.key === "gravity") return "A full ring is Earth gravity (1 g).";
+    if (def.key === "environment") return "A full ring is standard sea-level air pressure (101.3 kPa).";
+    if (def.key === "isolation") return `A full ring is the whole mission (${max} days).`;
+    return `Display scale 0 to ${max} ${def.unit}. The top of the scale is a drawing choice, not a NASA limit.`;
+  }
+
+  function renderHazards(all) {
+    const select = $("#med-place");
+    if (!select.children.length) {
+      PLACES.forEach(item => select.append(h("option", { value: item.id, text: item.name })));
+      select.addEventListener("change", () => {
+        store.env.place = select.value;
+        store.env.edits = {};
+        saveStore();
+        render();
+      });
+      $("#med-env-reset").addEventListener("click", () => {
+        store.env.edits = {};
+        saveStore();
+        render();
+      });
+    }
+    select.value = store.env.place;
+    const edited = Object.keys(store.env.edits).length;
+    $("#med-env-note").textContent = `The conditions around the crew at this location. ${edited ? `${edited} value${edited > 1 ? "s" : ""} changed by hand. ` : ""}` +
+      "The rings show each value on a simple scale; they do not rate it as good or bad. You can type over any value, or leave a box empty.";
+    const groups = systems();
+    $("#med-hazards").replaceChildren(...HAZARD_PARAMS.map(def => {
+      const found = hazardValue(def);
+      const value = found.v;
+      const max = def.max || crew().missionLength;
+      const input = valueInput(def, value);
+      const linked = groups.filter(item => item.hazards.includes(def.key));
+      const flagged = linked.filter(item => ["below", "over"].includes(systemZone(item, all))).length;
+      return h("article", { class: "med-hazard-card" },
+        h("div", { class: "med-hazard-top" },
+          hazardRing(def, value),
+          h("div", {},
+            h("h3", { text: DATA.hazards[def.key] }),
+            h("small", { text: def.label }),
+            h("label", { class: "med-hazard-edit" }, input, h("span", { text: def.unit })),
+            h("small", { class: "med-quiet", text: scaleNote(def, max) }))),
+        h("p", { class: "med-hazard-about", text: HAZARD_INFO[def.key].about }),
+        ...(def.extras || []).map(extra => {
+          const more = hazardValue(extra);
+          return h("div", { class: "med-hazard-extra" },
+            h("label", {}, h("small", { text: extra.label }),
+              h("span", { class: "med-hazard-edit" }, valueInput(extra, more.v), h("span", { text: extra.unit }))));
+        }),
+        h("div", { class: "med-hazard-links" },
+          h("b", { text: "Body systems linked to this hazard" }),
+          h("div", { class: "med-hazard-chips" }, ...linked.map(item => h("button", {
+            class: "med-chip", type: "button", onclick: () => pickSystem(item.id)
+          }, h("span", { text: item.name }), pill(systemZone(item, all))))),
+          h("small", { class: "med-quiet", text: flagged ?
+            `${flagged} of ${linked.length} linked systems have results outside the normal range.` :
+            "No linked system has a result outside the normal range." })),
+        h("details", { class: "med-evidence" }, h("summary", { text: "What this can affect" }),
+          h("ul", {}, ...HAZARD_INFO[def.key].watch.map(text => h("li", { text }))),
+          h("p", { class: "med-quiet", text: "Things to watch for, not a diagnosis." })));
+    }));
+  }
+
   function renderDashboard() {
     const member = crew();
     const groups = systems();
@@ -982,6 +1196,15 @@
     $("#med-cards").replaceChildren(...(visible.length ? visible.map(id => ringCard(all[id])) :
       [h("p", { class: "med-quiet", text: "No tests are ticked for this system. Add them in the Laboratory." })]));
 
+    renderHazards(all);
+
+    const off = DATA.tests.filter(test => !available(test.id));
+    if (off.length) {
+      $("#med-cards").append(h("p", { class: "med-quiet med-unavailable" },
+        h("b", { text: "Not on this vehicle (unticked in the Laboratory): " }), off.map(test => test.name).join(", "),
+        ". They are not counted as normal."));
+    }
+
     // Trend for the picked result over the chosen period.
     const trendBox = $("#med-trend");
     const x = all[picked];
@@ -1008,7 +1231,8 @@
     const results = ids.map(id => all[id]).filter(r => !(r.kind === "vital" && (VITALS[r.id].noAuto || VITALS[r.id].noRange)));
     const out = results.filter(flagged);
     const open = results.filter(r => r.zone === "recheck" || r.zone === "nodata");
-    const banner = out.length ? ["over", "▲", `${out.length} result${out.length > 1 ? "s" : ""} outside the normal range`, out.map(r => r.name).join(", ")] :
+    const banner = !results.length ? ["nodata", "?", "No results to assess", "Every test is unticked for this vehicle, or none has a result. Nothing is shown as normal."] :
+      out.length ? ["over", "▲", `${out.length} result${out.length > 1 ? "s" : ""} outside the normal range`, out.map(r => r.name).join(", ")] :
       open.length ? ["nodata", "?", "Some results are missing or need a recheck", open.map(r => r.name).join(", ")] :
       ["normal", "✓", "Looking good", "All current results are in the normal range."];
     const recommendations = buildRecommendations();
@@ -1207,8 +1431,24 @@
     return {
       level, names, severity,
       tests: wanted.filter(available), missing: wanted.filter(id => !available(id)),
-      care: [...new Set(chosen.map(item => item.care).filter(Boolean))]
+      care: [...new Set(chosen.map(item => item.care).filter(Boolean))],
+      chosen
     };
+  }
+
+  // Kept for the documentation build; not shown in the interface (the team wants the screens simple).
+  // eslint-disable-next-line no-unused-vars
+  function symptomEvidence(items) {
+    const rows = items.map(item => {
+      const parts = [];
+      if (item.urgentWhen) parts.push(`Becomes urgent when: ${item.urgentWhen}.`);
+      if (item.hazards) parts.push(`Related hazards: ${item.hazards}.`);
+      parts.push(item.source ? `Source: ${item.source}` : "Source pending.");
+      return h("li", {}, h("b", { text: `${item.name}: ` }), ...withLinks(parts.join(" ")));
+    });
+    return h("details", { class: "med-evidence" }, h("summary", { text: "Evidence" }),
+      h("p", { text: "Urgency and tests come from the symptom table. Triggers are proposed app logic, not NASA medical thresholds." }),
+      h("ul", {}, ...rows));
   }
 
   function outcomeCard(result) {
@@ -1295,6 +1535,7 @@
           `${def.name}: ${def.format(latest)} ${def.unit} | ${STATUS[status.key].label} | ${formatTime(latest.at)} | ${latest.source}${latest.sample ? " (sample)" : ""} | Trend: ${trendOf(type, list).text}` :
           `${def.name}: no reading | ${STATUS.nodata.label}`;
       })],
+      ["Tests not on this vehicle", (list => list.length ? [list.join(", ")] : ["None unticked"])(DATA.tests.filter(test => !available(test.id)).map(test => test.name))],
       ["Symptoms, selected period", felt.length ? felt.map(s =>
         `${s.name}, strength ${s.severity}/5, ${formatTime(s.at)}${s.note ? ` - ${s.note}` : ""}${s.sample ? " (sample)" : ""}`) : ["None logged"]],
       ["Routine context, latest check-ins", !member.journalOwner ? ["Routine journal on this device is not linked to this crew member"] :
