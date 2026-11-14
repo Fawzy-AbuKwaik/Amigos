@@ -33,6 +33,21 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Version browser assets
+        env:
+          ASSET_VERSION: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          page = Path("index.html")
+          pattern = '((?:src|href)="(?:js|css)/[^"?]+)(?:\\?[^\\"]*)?(")'
+          content, count = re.subn(pattern, lambda m: m[1] + "?v=" + os.environ["ASSET_VERSION"] + m[2], page.read_text(encoding="utf-8"))
+          if count != 5:
+              raise SystemExit(f"Expected 5 browser assets, found {count}")
+          page.write_text(content, encoding="utf-8")
+          PY
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
