@@ -384,6 +384,8 @@
      <label data-mode="assess"><input name="medtab" type="radio" value="related"/><span>Related indicators</span></label>
      <label data-mode="assess"><input name="medtab" type="radio" value="summary"/><span>Case summary</span></label>
     </fieldset>
+    <label class="med-sample-note"><input type="checkbox" id="med-show-samples"> Show demonstration measurements and symptoms</label>
+    <p id="med-data-mode" class="med-sample-note">Personal data: sample readings are excluded. New entries are saved on this browser only.</p>
     <p class="med-sample-note">
      <span aria-hidden="true">▣</span>
      Prototype: crew, device readings, ranges, symptom rules and recommendations are placeholder data until the research tables are loaded. Entries you add are saved on this browser only.
@@ -458,7 +460,7 @@
       <section class="med-pane med-pane-cards">
        <div class="med-pane-head"><h2 id="med-cards-title">Current results</h2><span id="med-cards-sub"></span></div>
        <p class="med-ring-key">
-        Each circle shows where the result sits. 25–75% is the normal range:
+        Rings show position relative to a reference, not a health score. Recorded answers have no medical classification:
         <b class="med-key-below">▼ below is red</b>, <b class="med-key-normal">✓ normal is green</b>,
         <b class="med-key-over">▲ over is orange</b>. Tap a result to see its trend.
        </p>
@@ -471,7 +473,7 @@
       </section>
      </div>
      <section class="med-pane med-combined">
-      <div class="med-pane-head"><h2>Daily routine and lab tests together</h2><span id="med-combined-sub"></span></div>
+      <div class="med-pane-head"><h2>Recording activity</h2><span id="med-combined-sub"></span></div>
       <div id="med-combined"></div>
      </section>
      <div class="med-bottom">

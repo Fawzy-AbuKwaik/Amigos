@@ -85,6 +85,7 @@ QUESTIONS.forEach(question => {
 
   group.dataset.labels = question.labels || "";
   group.dataset.name = question.name;
+  if (question.required === false || question.slot === "activity") group.dataset.optional = "true";
   if (typeof question.min === "number") group.dataset.min = question.min;
   if (typeof question.max === "number") group.dataset.max = question.max;
   if (typeof question.scaleMin === "number") group.dataset.min = question.scaleMin;
@@ -117,7 +118,7 @@ document.querySelectorAll(".rating").forEach(group => {
     input.type = "radio";
     input.name = group.dataset.name;
     input.value = value;
-    input.required = true;
+    input.required = group.dataset.optional !== "true";
     const content = document.createElement("span");
     if (!explicit) {
       const number = document.createElement("b");
@@ -311,8 +312,8 @@ form.addEventListener("submit", event => {
     showError("Choose today or a past log date.");
     return;
   }
-  for (let index = 1; index < panels.length; index++) {
-    if (!validateStep(index)) return;
+  for (let index = 0; index < panels.length; index++) {
+    if (!validateStep(index)) { showStep(index, false); validateStep(index); return; }
   }
   if (!storageReady) {
     showError("Existing browser data could not be read. Recover it before saving new entries.");
@@ -327,11 +328,12 @@ form.addEventListener("submit", event => {
     return;
   }
   ["sleepQuality", "appetite", ...QUESTIONS.filter(question => !question.textValue).map(question => question.name)].forEach(name => {
-    entry[name] = Number(entry[name]);
+    const raw = entry[name];
+    entry[name] = raw === undefined || raw === null || raw === "" ? null : Number(raw);
   });
   // An omitted optional measurement is unknown, not a measured zero.
   ["activity", "water", "caffeine", "meals"].forEach(name => {
-    entry[name] = entry[name] === "" ? null : Number(entry[name]);
+    entry[name] = entry[name] === undefined || entry[name] === null || entry[name] === "" ? null : Number(entry[name]);
   });
   // Preserve the old descriptive 1-5 mean only for compatible mental items.
   // Numeric measurements, choices and new 0-10/AMS scales never enter it.
@@ -407,7 +409,7 @@ function renderHistory() {
       ["Appetite", displayValue(record.appetite, " / 5")],
       ["Meals", answerLabel("meals", record.meals) ?? displayValue(record.meals)],
       ["Water", answerLabel("water", record.water) ?? displayValue(record.water, " mL")],
-      ["Mind score", record.mind == null ? "Not scored" : displayValue(record.mind, ` / ${record.mindMax ?? 5}`)],
+      ["Mind descriptive mean", record.mind == null ? "Not scored" : displayValue(record.mind, ` / ${record.mindMax ?? 5}`)],
       ["Exercise", answerLabel("activity", record.activity) ?? displayValue(record.activity, " min")],
       ["Caffeinated drinks", answerLabel("caffeine", record.caffeine) ?? displayValue(record.caffeine)]
     ];

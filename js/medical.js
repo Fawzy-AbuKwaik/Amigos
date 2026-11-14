@@ -38,7 +38,7 @@
     const numeric = test.input === "number";
     const fields = test.fields || [];
     const decimals = test.decimals || 0;
-    const bands = fields.map((f, i) => ({ lo: f.lo, hi: f.hi, i }))
+    const bands = (test.source?.includes("PLACEHOLDER") ? [] : fields).map((f, i) => ({ lo: f.lo, hi: f.hi, i }))
       .filter(b => b.lo !== undefined && b.hi !== undefined);
     VITALS[test.id] = {
       ...test, decimals, bands,
@@ -46,7 +46,7 @@
       step: test.step || 1,
       staleHours: STALE_HOURS[test.frequency] || Infinity,
       format: r => numeric ? r.v.map(n => Number(n).toFixed(decimals)).join("/") :
-        test.input === "image" ? "Image saved" : "Recording saved",
+        r.file ? r.file.name : "Recording entry (no attached file)",
       fields: numeric ? fields.map(f => [f.label, f.min, f.max]) : null,
       series: fields.length ? fields.map(f => f.short || f.label) : [test.name],
       ref: { text: test.refText, source: test.source },
@@ -71,7 +71,8 @@
     below: { icon: "▼", label: "Below" },
     over: { icon: "▲", label: "Over" },
     recheck: { icon: "↻", label: "Needs recheck" },
-    nodata: { icon: "?", label: "No data" }
+    nodata: { icon: "?", label: "No data" },
+    recorded: { icon: "-", label: "Recorded" }
   };
 
   const GROUPS = [
@@ -120,6 +121,79 @@
   ];
   /* ---------- Browser storage (same safety rules as the routine journal) ---------- */
 
+  // File blobs live in IndexedDB; only their metadata is kept in localStorage.
+  // No file is uploaded to a server.
+  const FILE_DB = "amigos-files-v1";
+  const MAX_FILE_SIZE = 25 * 1024 * 1024;
+  const FILE_TYPES = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    pdf: "application/pdf", mp4: "video/mp4", webm: "video/webm"
+  };
+  function fileError(file, def) {
+    if (!file) return "Choose a file before saving.";
+    if (!file.size) return "The selected file is empty.";
+    if (file.size > MAX_FILE_SIZE) return "Choose a file no larger than 25 MB.";
+    const ext = file.name.split(".").at(-1).toLowerCase();
+    const allowed = (def.attachment?.accept || "").split(",");
+    if (!allowed.includes(`.${ext}`) || !FILE_TYPES[ext] || (file.type && file.type !== FILE_TYPES[ext])) {
+      return `Unsupported file. Allowed formats: ${def.attachment?.accept || "none"}.`;
+    }
+    return null;
+  }
+
+  function attachmentStore(mode, operation) {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === "undefined") {
+        reject(new Error("File storage is unavailable in this browser."));
+        return;
+      }
+      const request = indexedDB.open(FILE_DB, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("files");
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error("Close other AMIGOS tabs and try again."));
+      request.onsuccess = () => {
+        const db = request.result;
+        let transaction, result;
+        try {
+          transaction = db.transaction("files", mode);
+          const action = operation(transaction.objectStore("files"));
+          action.onsuccess = () => { result = action.result; };
+        } catch (error) { db.close(); reject(error); return; }
+        transaction.oncomplete = () => { db.close(); resolve(result); };
+        transaction.onabort = transaction.onerror = () => { db.close(); reject(transaction.error); };
+      };
+    });
+  }
+  const saveAttachment = (id, file) => attachmentStore("readwrite", files => files.put(file, id));
+  const getAttachment = id => attachmentStore("readonly", files => files.get(id));
+  const removeAttachment = id => attachmentStore("readwrite", files => files.delete(id));
+  let previewUrls = [];
+
+  function attachmentPreview(reading) {
+    const box = h("div", { class: "med-attachment" });
+    const button = h("button", { class: "secondary", type: "button", text: "Open file" });
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        const file = await getAttachment(reading.file.id);
+        if (!file) throw new Error("Attachment not found on this browser.");
+        if (!box.isConnected) return;
+        const url = URL.createObjectURL(file);
+        previewUrls.push(url);
+        const ext = reading.file.name.split(".").at(-1).toLowerCase();
+        const mime = FILE_TYPES[ext];
+        const media = mime?.startsWith("image/") ? h("img", { src: url, alt: `${VITALS[reading.type].name}: ${reading.file.name}` }) :
+          mime?.startsWith("video/") ? h("video", { src: url, controls: true, preload: "metadata", "aria-label": reading.file.name }) : null;
+        box.replaceChildren(h("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: `Open ${reading.file.name}` }), media);
+      } catch {
+        button.disabled = false;
+        showToast("Unable to open the file. It may have been cleared from this browser's storage.");
+      }
+    });
+    box.append(h("small", { text: `${reading.file.name} (${(reading.file.size / 1024 / 1024).toFixed(2)} MB)` }), button);
+    return box;
+  }
+
   let store = { v: 1, activeCrew: "c1", measurements: [], symptoms: [] };
   let storeReady = true;
   try {
@@ -159,9 +233,11 @@
   let picked = "bp"; // indicator shown in the trend chart
 
   const crew = () => CREW.find(member => member.id === AMIGOS.crewId());
-  const readingsFor = type => [...SAMPLE_READINGS, ...store.measurements]
+  // Demo values are opt-in and never mixed with personal measurements.
+  let showSamples = false;
+  const readingsFor = type => (showSamples ? SAMPLE_READINGS : store.measurements)
     .filter(r => r.crew === AMIGOS.crewId() && r.type === type).sort((a, b) => a.at - b.at);
-  const symptomsFor = () => [...SAMPLE_SYMPTOMS, ...store.symptoms]
+  const symptomsFor = () => (showSamples ? SAMPLE_SYMPTOMS : store.symptoms)
     .filter(s => s.crew === AMIGOS.crewId()).sort((a, b) => b.at - a.at);
 
   /* ---------- Formatting ---------- */
@@ -199,12 +275,12 @@
       return { key: "recheck", reason: `The device flagged this reading: ${latest.qualityNote}.` };
     }
     if (def.noAuto) {
-      return { key: "nodata", reason: "Recording saved. This app does not interpret ECG; the medical team reviews it." };
+      return { key: "recorded", reason: "The medical team reviews this recording or image; the app does not interpret it." };
     }
     if (Date.now() - latest.at > def.staleHours * HOUR) {
       return { key: "recheck", reason: `The last reading is ${ago(latest.at).replace(" ago", "")} old. Take a new one.` };
     }
-    if (def.noRange) return { key: "nodata", reason: "No general reference. Followed against your own earlier results." };
+    if (def.noRange) return { key: "recorded", reason: "No verified general reference loaded. Value recorded without automatic classification." };
     const problem = def.check(latest);
     return problem ? { key: problem.startsWith("Above") ? "over" : "below", reason: problem } :
       { key: "normal", reason: "Inside the general adult reference." };
@@ -243,7 +319,7 @@
     // Only the active crew member's check-ins (older entries belong to the first crew member).
     const list = (typeof records === "undefined" ? [] : records)
       .filter(record => (record.crew || CREW[0].id) === AMIGOS.crewId());
-    list.forEach(record => {
+    list.filter(record => /^\d{4}-\d{2}-\d{2}$/.test(record.date) && record.date <= localDate()).forEach(record => {
       const existing = map[record.date];
       if (!existing || (record.updatedAt || "") > (existing.updatedAt || "")) map[record.date] = record;
     });
@@ -314,6 +390,7 @@
 
   function seriesFor(type, from) {
     const def = VITALS[type];
+    if (def.noAuto) return [];
     const list = readingsFor(type).filter(r => r.at >= from);
     return def.series.map((label, index) => ({ label, points: list.map(r => ({ t: r.at, v: r.v[index] })) }));
   }
@@ -336,35 +413,43 @@
   /* ---------- Indicators: device vitals plus Daily check-in values ---------- */
 
   // Values written by the Daily check-in (Routines view).
+  function mentalQuestions() {
+    return DATA.questions.filter(q => q.mind !== false && !q.metric && !q.choice && !q.textValue && !q.values &&
+      questionScale(q).min === 1 && questionScale(q).max === 5 && !q.instrument &&
+      !q.name.endsWith("AMS") && (q.direction ?? "higher") === "higher");
+  }
+
+  function mindAverage(entry) {
+    const questions = mentalQuestions();
+    const values = questions.map(q => entry[q.name]);
+    return values.length && values.every(v => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 5) ?
+      Number((values.reduce((sum, v) => sum + Number(v), 0) / values.length).toFixed(1)) : null;
+  }
+
+  function routineValue(name, value, unit = "") {
+    if (value === null || value === undefined || value === "") return "Not recorded";
+    return answerLabel(name, value) ?? `${value}${unit}`;
+  }
+
   const ROUTINE = {
-    sleep: {
-      name: "Sleep", unit: "h", get: e => e.sleepHours, decimals: 1, lo: 7, hi: 9, short: "the 7–9 h reference",
-      ref: "7–9 h of sleep per night. Source: National Sleep Foundation (adults)."
-    },
-    mind: {
-      name: "Mind & mood", unit: "/ 5", get: e => e.mind ?? e.mood, decimals: 1, lo: 3, hi: 5, short: "the 3–5 part of the scale",
-      ref: "Average of your daily mental health answers (1–5); below 3 counts as low. Not a clinical score."
-    },
-    nutrition: {
-      name: "Appetite", unit: "/ 5", get: e => e.appetite, lo: 3, hi: 5, short: "the 3–5 part of the scale",
-      ref: "Your own 1–5 appetite rating; 1–2 counts as low. Not a clinical score."
-    },
-    water: {
-      name: "Water", unit: "mL", get: e => e.water, own: true, short: "your own average for the period (±20%)",
-      ref: "Compared with your own average for the period. The mission fluid plan is not loaded."
-    },
-    activity: {
-      name: "Exercise", unit: "min", get: e => e.activity, own: true, short: "your own average for the period (±20%)",
-      ref: "Compared with your own average for the period. The mission exercise plan is not loaded."
-    }
+    sleep: { name: "Sleep", field: "sleepHours", unit: "h", get: e => e.sleepHours, lo: 7, hi: 9,
+      ref: "Self-reported sleep category; 7-9 hours is the app's adult reference. Category values are not exact hours." },
+    mind: { name: "Mind & mood", unit: "/ 5", get: mindAverage, decimals: 1,
+      ref: "Descriptive mean of compatible 1-5 answers. No clinical cutoff or diagnosis is applied." },
+    nutrition: { name: "Appetite", unit: "/ 5", get: e => e.appetite,
+      ref: "Self-reported appetite (1-5), displayed without medical classification." },
+    water: { name: "Water", field: "water", unit: "mL", get: e => e.water,
+      ref: "Reported intake category. No hydration status is inferred. Follow your mission fluid plan." },
+    activity: { name: "Exercise", field: "activity", unit: "min", get: e => e.activity,
+      ref: "Reported exercise category. No adequacy score is assigned. Follow your mission exercise plan." }
   };
 
   // Body systems from js/data.js, each with its available tests and daily indicators.
   const systems = () => DATA.systems.map(item => ({
     ...item,
-    ids: [...ORDER.filter(id => VITALS[id].system === item.id && available(id)), ...item.routine]
+    ids: [...ORDER.filter(id => (VITALS[id].system === item.id || VITALS[id].relatedSystems?.includes(item.id)) && available(id)), ...item.routine]
   }));
-  const allIds = () => systems().flatMap(item => item.ids);
+  const allIds = () => [...new Set(systems().flatMap(item => item.ids))];
 
   const zoneOf = (value, lo, hi) => value < lo ? "below" : value > hi ? "over" : "normal";
   // Ring percent: the normal range always spans 25–75% of the circle.
@@ -401,48 +486,35 @@
   function routineIndicator(id) {
     const def = ROUTINE[id];
     const out = {
-      id, kind: "routine", name: def.name, unit: def.unit, zone: "nodata", pct: null, bigText: "–",
+      id, kind: "routine", name: def.name, unit: def.unit, zone: "nodata", pct: null, bigText: "-",
       valueText: "not recorded", when: "From your Daily check-in", refText: def.ref,
       decimals: def.decimals || 0, bands: [], series: [{ label: def.name, points: [] }]
     };
-    const journal = routineByDate();
-    const entries = Object.values(journal)
-      .map(e => ({ raw: def.get(e), date: e.date }))
-      .filter(e => e.raw !== null && e.raw !== undefined && e.raw !== "")
-      // Plot each check-in at midday, but never later than now.
-      .map(e => ({ t: Math.min(new Date(`${e.date}T12:00`).getTime(), Date.now()), v: Number(e.raw), date: e.date }))
-      .filter(e => Number.isFinite(e.v) && e.t >= Date.now() - span()).sort((a, b) => a.t - b.t);
-    out.series[0].points = entries;
-    const today = localDate();
-    const current = entries.findLast(e => e.date === today || e.date === dateKey(Date.now() - DAY));
+    const entries = Object.values(routineByDate())
+      .map(e => ({ raw: def.get(e), date: e.date, t: Math.min(new Date(`${e.date}T12:00`).getTime(), Date.now()) }))
+      .filter(e => e.raw !== null && e.raw !== undefined && e.raw !== "" && Number.isFinite(Number(e.raw)) &&
+        e.t >= Date.now() - span()).sort((a, b) => a.date.localeCompare(b.date));
+    const category = e => def.field && answerLabel(def.field, e.raw);
+    out.categoryRows = def.field ? entries.map(e => [e.date, routineValue(def.field, e.raw, ` ${def.unit}`)]) : null;
+    // Category representatives must never appear as measured values in a graph or average.
+    if (!def.field) out.series[0].points = entries.map(e => ({ t: e.t, v: Number(e.raw) }));
+    const current = entries.findLast(e => e.date === localDate() || e.date === dateKey(Date.now() - DAY));
     if (!current) {
-      out.reason = journal[today] ? "Not recorded in today's check-in." : "No check-in for today yet.";
+      out.reason = "No answer for today or yesterday. Open the Daily check-in.";
       return out;
     }
-    out.bigText = String(current.v);
-    out.valueText = `${current.v} ${def.unit}`;
-    out.when = `${current.date === today ? "Today's" : "Yesterday's"} check-in`;
-    let lo = def.lo;
-    let hi = def.hi;
-    if (def.own) {
-      const earlier = entries.filter(e => e !== current);
-      const average = earlier.length ? mean(earlier.map(e => e.v)) : 0;
-      if (earlier.length < 3 || average <= 0) {
-        out.reason = "Needs 3 earlier check-ins to compare with your average.";
-        return out;
-      }
-      lo = average * 0.8;
-      hi = average * 1.2;
-      out.avgText = `${Math.round(average)} ${def.unit}`;
-    } else if (entries.length >= 2) {
-      const average = mean(entries.map(e => e.v));
-      out.avgText = `${average.toFixed(1)} ${def.unit}`;
-      out.avgZone = zoneOf(average, lo, hi);
+    out.bigText = category(current) || String(current.raw);
+    out.unit = category(current) ? "" : def.unit;
+    out.valueText = category(current) || `${current.raw} ${def.unit}`;
+    out.when = `${current.date === localDate() ? "Today's" : "Yesterday's"} check-in`;
+    out.zone = "recorded";
+    out.reason = "Recorded without an automatic medical classification.";
+    if (id === "sleep") {
+      const q = DATA.questions.find(q => q.name === "sleepHours");
+      const band = q?.values?.findIndex(v => String(v) === String(current.raw)) ?? -1;
+      out.zone = band >= 0 ? (band < 3 ? "below" : band === 3 ? "normal" : "over") : zoneOf(Number(current.raw), 7, 9);
+      out.reason = `${STATUS[out.zone].label} the app's 7-9 hour reference; this is a self-report, not a diagnosis.`;
     }
-    out.bands = [{ lo, hi, i: 0 }];
-    out.zone = zoneOf(current.v, lo, hi);
-    out.pct = percentOf(current.v, lo, hi);
-    out.reason = out.zone === "normal" ? `Inside ${def.short}.` : `${out.zone === "below" ? "Below" : "Above"} ${def.short}.`;
     return out;
   }
 
@@ -465,7 +537,7 @@
     const ids = allIds();
     const has = id => ids.includes(id);
     const all = Object.fromEntries([...ORDER, ...Object.keys(ROUTINE)].map(id => [id, indicator(id)]));
-    const recentSymptoms = symptomsFor().filter(s => Date.now() - s.at < DAY);
+    const recentSymptoms = symptomsFor().filter(s => s.at <= Date.now() && Date.now() - s.at < DAY);
     const catalog = Object.fromEntries(DATA.symptoms.map(item => [item.name, item]));
     const used = new Set();
     const lower = x => ["ECG", "SpO₂"].includes(x.name) ? x.name : x.name.toLowerCase();
@@ -498,25 +570,26 @@
           button: ["Open case summary", () => openTab("summary")]
         });
       } else if (info.urgency === "tests") {
-        const missing = info.tests.filter(id => has(id) && !((readingsFor(id).at(-1) || {}).at >= entry.at - HOUR));
-        if (missing.length) {
+        const missing = info.tests.filter(id => has(id) && !readingsFor(id).some(r => r.at >= entry.at && r.quality !== "poor" && Date.now() - r.at <= VITALS[id].staleHours * HOUR));
+        const unavailable = info.tests.filter(id => !has(id));
+        if (missing.length || unavailable.length) {
           list.push({
             title: `Run tests for your ${entry.name.toLowerCase()}`,
-            action: `These results will give you a better recommendation: ${missing.map(id => VITALS[id].name).join(", ")}.`,
+            action: `Contact the mission medical team for guidance.${missing.length ? ` Suggested checks to discuss: ${missing.map(id => VITALS[id].name).join(", ")}.` : ""}${unavailable.length ? ` Unavailable on this vehicle: ${unavailable.map(id => VITALS[id].name).join(", ")}.` : ""} Tests cannot rule out a problem on their own.`,
             why: [logged, "No result for these tests since the symptom was logged"],
             mental: info.care,
             rule: "tests", tests: missing,
-            button: ["Enter a result", () => openDetail(missing[0])]
+            button: missing.length ? ["Enter a result", () => openDetail(missing[0])] : ["Open case summary", () => openTab("summary")]
           });
         }
       }
     });
 
-    // Blood pressure together with body fluids and dizziness.
-    if (has("bp") && bp.zone === "below" && water.zone !== "normal" && water.zone !== "over") {
+    // A low reading does not establish dehydration, regardless of water intake.
+    if (has("bp") && bp.zone === "below") {
       list.push({
-        title: "Check your fluids, then recheck blood pressure",
-        action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it stays below the reference or you feel dizzy, contact the flight surgeon using your mission procedure.",
+        title: "Recheck low blood pressure and review symptoms",
+        action: "Repeat the measurement using the device procedure. If you feel dizzy or unwell, pause your task and contact the flight surgeon. Follow your mission fluid plan; the app cannot determine the cause or prescribe extra fluid. Fainting, confusion or rapidly worsening symptoms need immediate medical contact.",
         why: [line(bp), water.zone === "nodata" ? "Water: not recorded in the Daily check-in" : line(water), symptomLine("Dizziness")],
         mental: "Move slowly when you change position, and pause before starting a task.",
         rule: "bpfluids", tests: ["bp"],
@@ -531,23 +604,33 @@
     if (has("temp") && has("hr") && temp.zone === "over" && hrRaised) {
       list.push({
         title: "Recheck temperature and heart rate together",
-        action: "Rest for 15 minutes, drink water, then repeat both. If both are still raised, contact the flight surgeon using your mission procedure.",
+        action: "Repeat both using the device procedures and contact the flight surgeon if readings remain raised or you feel unwell. Follow your mission plan; these readings do not establish a cause.",
         why: [line(temp), line(hr), baseHr ? `Heart rate baseline ${baseHr} bpm` : null, symptomLine("Fever or chills")],
         rule: "temphr", tests: ["temp", "hr"],
         button: measure("temp")
       });
       used.add("temp").add("hr");
     }
-    // Mind and mood together with sleep.
-    if (mind.zone === "below" && (sleep.zone === "below" || sleep.avgZone === "below")) {
+    // Use the person's selected answers, never a clinical cutoff on their mean.
+    const latestRoutine = Object.values(routineByDate()).sort((a, b) => b.date.localeCompare(a.date))[0];
+    const recentRoutine = latestRoutine && [localDate(), dateKey(Date.now() - DAY)].includes(latestRoutine.date);
+    const difficult = recentRoutine ? mentalQuestions().filter(q => {
+      const value = latestRoutine[q.name];
+      return value !== null && value !== undefined && value !== "" && Number(value) >= 1 && Number(value) <= 2;
+    }) : [];
+    const shortSleep = sleep.zone === "below";
+    const longSleep = sleep.zone === "over";
+    if (difficult.length || shortSleep || longSleep) {
+      const answers = difficult.map(q => `${q.short || q.name}: ${answerLabel(q.name, latestRoutine[q.name]) || latestRoutine[q.name]}`);
       list.push({
-        title: "Protect your sleep and do one thing for your mood",
-        action: "Low mood is showing alongside short sleep. Keep your scheduled sleep period tonight and dim the lights an hour before. If this continues for several days, talk to the flight surgeon.",
-        why: [line(mind), line(sleep)],
-        mental: "Pick one small thing you can finish today, and tell a crewmate how you are doing.",
-        activities: activitiesFor(["mood", "connection", "sleep"]),
-        rule: "moodsleep", tests: [],
-        button: checkin
+        title: difficult.length && shortSleep ? "Support your mood and protect your sleep" :
+          difficult.length ? "Make time for support and recovery" : shortSleep ? "Protect your scheduled sleep period" : "Review your sleep pattern",
+        action: difficult.length ? "You reported some difficult experiences. Choose a manageable break or talk with a crewmate, and protect your mission sleep schedule. Contact behavioral health support or the flight surgeon if distress persists, worsens or affects your work." :
+          shortSleep ? "Your selected sleep category is below the app's adult reference. Protect your scheduled sleep opportunity and follow mission guidance on light, noise and caffeine. Discuss ongoing tiredness or sleep difficulty with the flight surgeon." :
+          "Your selected sleep category is above the app's adult reference. This does not establish a problem or mean you should cut sleep. Discuss persistent changes or daytime sleepiness with the flight surgeon.",
+        why: [...answers, shortSleep || longSleep ? line(sleep) : null],
+        activities: activitiesFor(difficult.length ? ["mood", "connection", "calm"] : ["sleep", "calm"]),
+        rule: "moodsleep", tests: [], button: checkin
       });
       used.add("mind").add("sleep");
     }
@@ -556,6 +639,7 @@
       const x = all[id];
       if (used.has(id)) return;
       const vital = x.kind === "vital";
+      if (!vital) return;
       const tags = ACTIVITY_TAGS[id];
       if (flagged(x) && x.avgZone === x.zone) {
         list.push({
@@ -605,7 +689,7 @@
       });
     }
     // Anything needing a fast response goes first.
-    return list.sort((a, b) => Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)));
+    return list.some(item => item.urgent) ? list.filter(item => item.urgent) : list;
   }
 
   // The same list is shown in the Assessment, the Laboratory flow and the Daily check-in.
@@ -648,7 +732,7 @@
     const placeholder = rows.some(r => r.textContent.includes("PLACEHOLDER"));
     return h("details", { class: "med-evidence" },
       h("summary", { text: "Evidence" }),
-      h("p", {}, h("strong", { text: rule.kind === "guidance" ? "Published reference ranges. " : "App suggestion, not yet sourced. " }), rule.note),
+      h("p", {}, h("strong", { text: rule.kind === "guidance" ? "Reference comparison; not a treatment protocol. " : "Prototype suggestion; source context below. " }), rule.note),
       rows.length ? h("ul", {}, ...rows) : h("p", { class: "med-quiet", text: "Source pending." }),
       placeholder ? h("p", { class: "med-quiet", text: "Some ranges here are placeholders until the research team's source is loaded." }) : null);
   }
@@ -735,7 +819,7 @@
     $("#med-updated").textContent = `Updated ${new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" })}`;
   }
 
-  // Percent circle. Numbers only reach this markup.
+  // Reference position circle. Only numeric geometry and fixed labels reach this markup.
   function ring(x) {
     const radius = 25;
     const length = 2 * Math.PI * radius;
@@ -744,7 +828,7 @@
       `<circle class="med-ring-track" cx="32" cy="32" r="${radius}"/>` +
       (x.pct === null ? "" : `<circle class="med-ring-fill" cx="32" cy="32" r="${radius}" ` +
         `stroke-dasharray="${(length * x.pct / 100).toFixed(1)} ${length.toFixed(1)}" transform="rotate(-90 32 32)"/>`) +
-      `<text class="med-ring-text" x="32" y="37" text-anchor="middle">${x.pct === null ? "–" : `${Math.round(x.pct)}%`}</text></svg>`;
+      `<text class="med-ring-text" x="32" y="37" text-anchor="middle">${x.pct === null ? "-" : "REF"}</text></svg>`;
     return wrap;
   }
 
@@ -761,7 +845,7 @@
         pill(x.zone)),
       h("span", { class: "med-ring-foot" },
         h("span", { text: x.reason }),
-        h("span", { text: x.avgText ? `Period average ${x.avgText}${x.avgZone ? ` · ${STATUS[x.avgZone].label}` : ""}` : "Period average: not enough results" }),
+        h("span", { text: x.kind === "routine" ? "Self-reported check-in answer" : x.avgText ? `Period average ${x.avgText}${x.avgZone ? ` · ${STATUS[x.avgZone].label}` : ""}` : "Period average: not enough results" }),
         h("span", { text: x.when })));
   }
 
@@ -769,13 +853,13 @@
   function systemZone(item, all) {
     const zones = item.ids.map(id => all[id].zone);
     return ["below", "over", "recheck"].find(zone => zones.includes(zone)) ||
-      (zones.includes("normal") ? "normal" : "nodata");
+      (zones.includes("normal") ? "normal" : zones.includes("recorded") ? "recorded" : "nodata");
   }
 
   const BODY_MARKS = {
     brain: [110, 24], eyes: [117, 46], lungs: [93, 110], heart: [120, 130],
     blood: [131, 158], fluids: [110, 188], muscle: [86, 256],
-    metabolic: [110, 220], balance: [134, 66]
+    metabolic: [110, 220], balance: [134, 66], "brain-and-spinal-fluid": [110, 86]
   };
   const ORGANS = {
     brain: "M96 30 C96 16 124 16 124 30 C124 37 118 38 110 38 C102 38 96 37 96 30 Z M110 18 L110 38",
@@ -829,13 +913,10 @@
 
   function readingForm(type) {
     const def = VITALS[type];
-    if (!def.fields) {
-      return h("p", { class: "helper-note", text: `${def.name} is captured by the ${def.device.toLowerCase()}, so there is nothing to type in. ` +
-        "Planned: on-device analysis of the recording or image for signal quality, attached to the case summary for the flight surgeon." });
-    }
+    if (!def.fields) return attachmentForm(type);
     const error = h("div", { class: "med-error", role: "alert" });
     const inputs = def.fields.map(([label, min, max]) => h("label", {}, `${label} (${def.unit})`,
-      h("input", { type: "number", min, max, step: def.decimals ? "0.1" : "1", required: true, inputmode: "decimal" })));
+      h("input", { type: "number", min, max, step: def.decimals ? String(10 ** -def.decimals) : "1", required: true, inputmode: "decimal" })));
     const time = h("input", { type: "datetime-local", required: true, value: localDateTime(Date.now()) });
     const source = h("select", {},
       h("option", { text: def.device }), def.device === "Manual count" ? null : h("option", { text: "Manual entry" }));
@@ -876,6 +957,57 @@
     return form;
   }
 
+  function attachmentForm(type) {
+    const def = VITALS[type];
+    const fileInput = h("input", { type: "file", accept: def.attachment?.accept, required: true });
+    const time = h("input", { type: "datetime-local", required: true, value: localDateTime(Date.now()) });
+    const error = h("p", { class: "med-error", role: "alert" });
+    const button = h("button", { class: "primary", type: "submit", text: "Save file", disabled: showSamples });
+    const form = h("form", { novalidate: true },
+      h("p", { class: "helper-note", text: "Import the file produced by your device. Saved on this browser only, up to 25 MB. The app does not analyse or diagnose from the file." }),
+      showSamples ? h("p", { text: "Switch off demonstration mode to import your file." }) : null,
+      h("div", { class: "two-column" }, h("label", {}, def.attachment?.label || "Recording file", fileInput),
+        h("label", {}, "Recorded at", time)),
+      error, button);
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (button.disabled || showSamples) return;
+      error.textContent = "";
+      if (!storeReady) { error.textContent = "Existing medical data could not be read. Recover it before saving."; return; }
+      const file = fileInput.files?.[0];
+      const issue = fileError(file, def);
+      if (issue) { error.textContent = issue; return; }
+      const at = new Date(time.value).getTime();
+      if (!time.checkValidity() || !Number.isFinite(at) || at > Date.now() + 60000) {
+        error.textContent = "Choose a recording time that is not in the future.";
+        return;
+      }
+      const id = crypto.randomUUID();
+      const owner = AMIGOS.crewId();
+      button.disabled = true;
+      button.textContent = "Saving...";
+      try {
+        await saveAttachment(id, file);
+        const entry = { id, crew: owner, type, v: [], at, source: def.device,
+          file: { id, name: file.name, size: file.size, mime: file.type } };
+        store.measurements.push(entry);
+        if (!saveStore()) {
+          store.measurements = store.measurements.filter(item => item.id !== id);
+          await removeAttachment(id);
+          throw new Error("Metadata could not be saved.");
+        }
+        showToast(`${def.name} file saved on this browser.`);
+        render();
+        renderRoutineStrip();
+      } catch {
+        error.textContent = "Unable to save the file. Check available browser storage and try again.";
+        button.disabled = false;
+        button.textContent = "Save file";
+      }
+    });
+    return form;
+  }
+
   function table(headers, rows) {
     return h("div", { class: "med-table-wrap" }, h("table", { class: "med-table" },
       h("thead", {}, h("tr", {}, ...headers.map(text => h("th", { scope: "col", text })))),
@@ -884,6 +1016,8 @@
   }
 
   function renderDetail() {
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    previewUrls = [];
     const box = $("#med-detail");
     box.replaceChildren();
     if (!detailType) return;
@@ -893,15 +1027,19 @@
     const list = readingsFor(type);
     const width = box.clientWidth - 62;
     const rows = list.slice(-6).reverse().map(r => [
-      `${def.format(r)} ${def.unit}`.trim(), `${formatTime(r.at)} · ${ago(r.at)}`,
+      r.file ? attachmentPreview(r) : `${def.format(r)} ${def.unit}`.trim(), `${formatTime(r.at)} · ${ago(r.at)}`,
       r.source + (r.sample ? " (sample)" : ""),
       r.sample ? "–" : h("button", {
         class: "med-link is-delete", type: "button", text: "Delete",
-        onclick: () => {
+        onclick: async () => {
           if (!confirm("Delete this reading? This cannot be undone.")) return;
           const previous = store.measurements;
           store.measurements = previous.filter(item => item.id !== r.id);
-          if (!saveStore()) store.measurements = previous;
+          if (!saveStore()) { store.measurements = previous; return; }
+          if (r.file) {
+            try { await removeAttachment(r.file.id); }
+            catch { showToast("Entry deleted; its stored file could not be removed."); }
+          }
           render();
           renderRoutineStrip();
         }
@@ -916,11 +1054,11 @@
           h("p", { text: `Why: ${def.why} Reference: ${def.ref.text}. Source: ${def.ref.source}.` })),
         h("button", { class: "secondary", type: "button", text: "Close", onclick: () => { detailType = null; render(); } })),
       h("h3", { class: "med-sub med-first", text: "Selected period" }),
-      chart({
+      def.noAuto ? h("p", { class: "med-quiet", text: "Files are reviewed by the medical team. No numeric trend or automatic interpretation is generated." }) : chart({
         series: seriesFor(type, from), bands: def.bands, from, to: Date.now(), width,
         decimals: def.decimals, label: chartSummary(type, from)
       }),
-      chartKey(type),
+      def.noAuto ? null : chartKey(type),
       h("h3", { class: "med-sub", text: "Recent readings" }),
       rows.length ? table(["Value", "Measured", "Source / device", ""], rows) :
         h("p", { class: "med-quiet", text: "No readings on file yet." }),
@@ -931,29 +1069,20 @@
       readingForm(type)));
   }
 
-  // Daily routine and lab tests on one scale: every result is placed on its own
-  // normal range (25–75%), so different devices and units can be compared.
+  // Counts show recording activity, without averaging unrelated clinical units.
   function combinedSeries(from) {
-    const scored = ["sleep", "mind", "nutrition"];
-    const daily = Object.values(routineByDate()).map(entry => {
-      const parts = scored.map(id => {
-        const value = ROUTINE[id].get(entry);
-        return value === null || value === undefined || value === "" ? null : percentOf(Number(value), ROUTINE[id].lo, ROUTINE[id].hi);
-      }).filter(part => part !== null);
-      return parts.length ? { t: Math.min(new Date(`${entry.date}T12:00`).getTime(), Date.now()), v: mean(parts) } : null;
-    }).filter(point => point && point.t >= from).sort((a, b) => a.t - b.t);
+    const daily = Object.values(routineByDate()).map(entry => ({
+      t: Math.min(new Date(`${entry.date}T12:00`).getTime(), Date.now()), v: 1
+    })).filter(p => p.t >= from).sort((a, b) => a.t - b.t);
     const byDay = {};
-    ORDER.filter(available).forEach(id => {
-      const def = VITALS[id];
-      if (def.noAuto || def.noRange) return;
-      readingsFor(id).filter(r => r.at >= from).forEach(r => {
-        const band = def.bands.find(b => zoneOf(r.v[b.i], b.lo, b.hi) !== "normal") || def.bands[0];
-        (byDay[dateKey(r.at)] = byDay[dateKey(r.at)] || []).push({ t: r.at, p: percentOf(r.v[band.i], band.lo, band.hi) });
-      });
-    });
-    const lab = Object.values(byDay).map(list => ({ t: mean(list.map(x => x.t)), v: mean(list.map(x => x.p)) }))
-      .sort((a, b) => a.t - b.t);
-    return [{ label: "Lab tests", points: lab }, { label: "Daily routine", points: daily }];
+    ORDER.filter(available).forEach(id => readingsFor(id).filter(r => r.at >= from).forEach(r => {
+      const key = dateKey(r.at);
+      byDay[key] = (byDay[key] || 0) + 1;
+    }));
+    const lab = Object.entries(byDay).map(([day, count]) => ({
+      t: Math.min(new Date(`${day}T12:00`).getTime(), Date.now()), v: count
+    })).sort((a, b) => a.t - b.t);
+    return [{ label: "Lab measurements per day", points: lab }, { label: "Daily check-ins", points: daily }];
   }
 
   function renderDashboard() {
@@ -979,9 +1108,9 @@
         },
         h("span", { text: item.name }), pill(systemZone(item, all)))));
 
-    // Current results as percent circles.
+    // Reference positions; self-reports have no percentage score.
     $("#med-cards-title").textContent = current ? `Current results · ${current.name}` : "Current results";
-    $("#med-cards-sub").textContent = member.name.toUpperCase();
+    $("#med-cards-sub").textContent = `${member.name.toUpperCase()} - rings show reference position, not a health percentage`;
     $("#med-cards").replaceChildren(...(visible.length ? visible.map(id => ringCard(all[id])) :
       [h("p", { class: "med-quiet", text: "No tests are ticked for this system. Add them in the Laboratory." })]));
 
@@ -996,10 +1125,11 @@
           h("h3", {}, `Trend, last ${store.period} days · `, h("b", { text: x.name })),
           h("button", {
             class: "med-link", type: "button",
-            text: x.kind === "vital" ? (VITALS[x.id].fields ? "Details & measure" : "How to record") : "Open check-in",
+            text: x.kind === "vital" ? (VITALS[x.id].fields ? "Details & measure" : "Details & files") : "Open check-in",
             onclick: () => x.kind === "vital" ? openDetail(x.id) : setView("checkin")
           })),
-        chart({
+        x.categoryRows ? table(["Date", x.name], x.categoryRows) : x.kind === "vital" && VITALS[x.id].noAuto ?
+          h("p", { class: "med-quiet", text: "Open Details to import or view files. Reports are reviewed by the medical team; no numeric trend is generated." }) : chart({
           series: x.series, bands: x.bands, from, to: Date.now(),
           width: trendBox.clientWidth, height: 150, decimals: x.decimals,
           label: `${x.name}, last ${store.period} days: ${points} result${points === 1 ? "" : "s"}, latest ${x.valueText}.`
@@ -1013,7 +1143,7 @@
     const open = results.filter(r => r.zone === "recheck" || r.zone === "nodata");
     const banner = out.length ? ["over", "▲", `${out.length} result${out.length > 1 ? "s" : ""} outside the normal range`, out.map(r => r.name).join(", ")] :
       open.length ? ["nodata", "?", "Some results are missing or need a recheck", open.map(r => r.name).join(", ")] :
-      ["normal", "✓", "Looking good", "All current results are in the normal range."];
+      ["normal", "✓", "No flagged comparable readings", "Comparable readings are in range. Recorded self-reports and unclassified measurements are not medical clearance."];
     const recommendations = buildRecommendations();
     $("#med-recos").replaceChildren(
       h("div", { class: `med-banner med-banner-${banner[0]}` },
@@ -1032,12 +1162,11 @@
     $("#med-combined-sub").textContent = `LAST ${store.period} DAYS`;
     combinedBox.replaceChildren(
       chart({
-        series: combined, bands: [{ lo: 25, hi: 75, i: 0 }], from, to: Date.now(),
+        series: combined, from, to: Date.now(),
         width: combinedBox.clientWidth, height: 190, decimals: 0,
-        label: `Combined score over the last ${store.period} days: ${combined[0].points.length} days of lab tests and ${combined[1].points.length} days of check-ins.`
+        label: `Recording counts over the last ${store.period} days: ${combined[0].points.length} days of lab tests and ${combined[1].points.length} days of check-ins.`
       }),
-      h("p", { class: "med-chart-key", text: "● solid Lab tests · ■ dashed Daily routine · shaded band = normal range (25–75%). " +
-          "Each result is placed on its own normal range before averaging, so results from different devices and units can be followed on one scale." }));
+      h("p", { class: "med-chart-key", text: "Solid: laboratory measurements per day. Dashed: saved daily check-ins (one per day). Counts show logging activity, not a health score or a normal range." }));
 
     // Record a new check-in.
     const dailyTests = ORDER.filter(id => available(id) && VITALS[id].frequency === "Daily");
@@ -1061,8 +1190,8 @@
     const tasks = [
       ["Daily tests", dailyTests.length > 0 && fresh === dailyTests.length, `${fresh} of ${dailyTests.length} measured in the last 24 h`],
       ["Daily check-in", Boolean(entry), entry ? "Saved today" : "Not saved yet"],
-      ["Exercise", Boolean(entry) && logged(entry.activity), entry && logged(entry.activity) ? `${entry.activity} min logged` : "Not logged today"],
-      ["Fluids", Boolean(entry) && logged(entry.water), entry && logged(entry.water) ? `${entry.water} mL logged` : "Not logged today"]
+      ["Exercise", Boolean(entry) && logged(entry.activity), entry && logged(entry.activity) ? `${routineValue("activity", entry.activity, " min")} logged` : "Not logged today"],
+      ["Fluids", Boolean(entry) && logged(entry.water), entry && logged(entry.water) ? `${routineValue("water", entry.water, " mL")} logged` : "Not logged today"]
     ];
     $("#med-routine").replaceChildren(
       h("div", { class: "med-pane-head" },
@@ -1126,8 +1255,8 @@
       const felt = allSymptoms.filter(s => dateKey(s.at) === key).map(s => `${s.name} ${s.severity}/5`);
       rows.push([
         offset === 0 ? "Today" : day.toLocaleDateString("en", { weekday: "short", day: "numeric", month: "short" }),
-        show(entry?.sleepHours, " h"), show(entry?.activity, " min"), show(entry?.water, " mL"),
-        show(entry?.caffeine, ""), show(entry?.meals, ""), felt.join(", ") || "None logged"
+        routineValue("sleepHours", entry?.sleepHours, " h"), routineValue("activity", entry?.activity, " min"), routineValue("water", entry?.water, " mL"),
+        routineValue("caffeine", entry?.caffeine), routineValue("meals", entry?.meals), felt.join(", ") || "None logged"
       ]);
     }
     box.append(table(["Day", "Sleep", "Exercise", "Water", "Caffeinated drinks", "Meals", "Symptoms"], rows));
@@ -1169,7 +1298,7 @@
         h("small", { text: `${test.frequency} · ${test.device}` })),
       result,
       on ? h("button", {
-        class: "secondary", type: "button", text: def.fields ? "Enter result" : "How to record",
+        class: "secondary", type: "button", text: def.fields ? "Enter result" : "Import file",
         onclick: () => openDetail(test.id)
       }) : null);
   }
@@ -1222,8 +1351,8 @@
     const care = result.care.length ? h("ul", {}, ...result.care.map(text => h("li", { text }))) : null;
     const heading = {
       now: ["▲ Contact the flight surgeon now", "At least one of these needs a fast response. Use your mission procedure now. If it does not delay the call, these tests help the surgeon:"],
-      tests: ["↻ Run these tests for a better recommendation", "Tap a test to see how to do it and enter the result. Your recommendations update as results come in."],
-      self: ["✓ No tests needed right now", "Here is what you can do yourself. If it gets worse or lasts more than a few days, contact the flight surgeon."]
+      tests: ["Discuss checks with the medical team", "Use mission medical guidance for testing. An available test or an in-range result cannot rule out a problem."],
+      self: ["✓ General support and monitoring", "These are general comfort suggestions, not medical clearance. Contact the flight surgeon for persistent, worsening or concerning symptoms."]
     }[result.level];
     return h("section", { class: `med-outcome med-outcome-${result.level}`, role: "status" },
       h("h3", { text: heading[0] }),
@@ -1231,8 +1360,8 @@
       h("p", { text: heading[1] }),
       result.level === "self" ? null : testButtons,
       result.level === "self" ? null : missing,
-      care ? h("p", { text: result.level === "self" ? "What to do:" : "Meanwhile:" }) : null,
-      care,
+      care && result.level !== "now" ? h("p", { text: result.level === "self" ? "What to do:" : "Meanwhile:" }) : null,
+      result.level === "now" ? null : care,
       h("p", { class: "med-quiet med-rule-note", text: RULE_NOTE }));
   }
 
@@ -1280,6 +1409,7 @@
     const felt = symptomsFor().filter(s => s.at >= week);
     const days = Object.keys(routine).sort().reverse().slice(0, 3);
     return [
+      ["Data mode", [showSamples ? "DEMONSTRATION: sample measurements and symptoms only; routine check-ins remain personal. Not a real medical case." : "Personal measurements and symptoms; demo values excluded."]],
       ["Crew member", [
         `${member.name}, ${member.role}, age ${member.age}`,
         `${member.mission}, day ${member.missionDay} of ${member.missionLength}`
@@ -1303,7 +1433,7 @@
       ["Routine context, latest check-ins", !member.journalOwner ? ["Routine journal on this device is not linked to this crew member"] :
         days.length ? days.map(key => {
           const e = routine[key];
-          return `${key}: sleep ${e.sleepHours ?? "not recorded"} h, exercise ${e.activity ?? "not recorded"} min, water ${e.water ?? "not recorded"} mL, caffeinated drinks ${e.caffeine ?? "not recorded"}, meals ${e.meals ?? "not recorded"}, mind score ${e.mind ?? "not recorded"} / 5`;
+          return `${key}: sleep ${routineValue("sleepHours", e.sleepHours, " h")}, exercise ${routineValue("activity", e.activity, " min")}, water ${routineValue("water", e.water, " mL")}, caffeinated drinks ${routineValue("caffeine", e.caffeine)}, meals ${routineValue("meals", e.meals)}, mind descriptive mean ${mindAverage(e) ?? "not recorded"} / 5`;
         }) : ["No routine check-ins saved"]],
       ["Recommendations shown to the crew member", (list => list.length ? list.map(item =>
         `${item.title} (prompted by: ${item.why.filter(Boolean).join("; ")})`) : ["None"])(buildRecommendations())],
@@ -1455,6 +1585,16 @@
     $("#med-symptom-form").reset();
     renderRoutineStrip();
     if (!$("#medical-view").hidden) render();
+  });
+
+  $("#med-show-samples").addEventListener("change", event => {
+    showSamples = event.target.checked;
+    outcome = null;
+    $("#med-data-mode").textContent = showSamples ?
+      "DEMONSTRATION: sample measurements and symptoms only. Daily check-ins remain your own. Switch off demo mode to see your saved measurements." :
+      "Personal data: sample readings are excluded. New entries are saved on this browser only.";
+    render();
+    renderRoutineStrip();
   });
 
   // Redraw charts when the width changes. Height-only changes (an on-screen
