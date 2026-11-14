@@ -206,10 +206,12 @@
     // Never overwrite unreadable existing data.
     storeReady = false;
   }
-  // Tests the user has unticked as not carried on this vehicle, and the assessment period.
+  // Unticked tests are excluded from assessment; their records remain available in Laboratory.
   if (!Array.isArray(store.unavailable)) store.unavailable = [];
   if (![7, 30, 90].includes(store.period)) store.period = 7;
   const available = id => !store.unavailable.includes(id);
+  const canAssess = id => !VITALS[id].noAuto && !VITALS[id].noRange;
+  const included = id => available(id) && canAssess(id);
   const span = () => store.period * DAY;
 
   function saveStore() {
@@ -229,6 +231,7 @@
   let tab = "dash";
   let group = GROUPS[0].id;
   let detailType = null;
+  let editingReadingId = null;
   let system = null; // selected body system, or null for all
   let picked = "bp"; // indicator shown in the trend chart
 
@@ -236,7 +239,7 @@
   // Demo values are opt-in and never mixed with personal measurements.
   let showSamples = false;
   const readingsFor = type => (showSamples ? SAMPLE_READINGS : store.measurements)
-    .filter(r => r.crew === AMIGOS.crewId() && r.type === type).sort((a, b) => a.at - b.at);
+    .filter(r => r.crew === AMIGOS.crewId() && r.type === type).sort((a, b) => a.at - b.at || (a.updatedAt || 0) - (b.updatedAt || 0));
   const symptomsFor = () => (showSamples ? SAMPLE_SYMPTOMS : store.symptoms)
     .filter(s => s.crew === AMIGOS.crewId()).sort((a, b) => b.at - a.at);
 
@@ -541,7 +544,7 @@
   function buildRecommendations() {
     const list = [];
     const ids = allIds();
-    const has = id => ids.includes(id);
+    const has = id => ids.includes(id) && included(id);
     const all = Object.fromEntries([...ORDER, ...Object.keys(ROUTINE)].map(id => [id, indicator(id)]));
     const recentSymptoms = symptomsFor().filter(s => s.at <= Date.now() && Date.now() - s.at < DAY);
     const catalog = Object.fromEntries(DATA.symptoms.map(item => [item.name, item]));
@@ -581,7 +584,7 @@
         if (missing.length || unavailable.length) {
           list.push({
             title: `Run tests for your ${entry.name.toLowerCase()}`,
-            action: `Contact the mission medical team for guidance.${missing.length ? ` Suggested checks to discuss: ${missing.map(id => VITALS[id].name).join(", ")}.` : ""}${unavailable.length ? ` Unavailable on this vehicle: ${unavailable.map(id => VITALS[id].name).join(", ")}.` : ""} Tests cannot rule out a problem on their own.`,
+            action: `Contact the mission medical team for guidance.${missing.length ? ` Suggested checks to discuss: ${missing.map(id => VITALS[id].name).join(", ")}.` : ""}${unavailable.length ? ` Excluded from automatic assessment: ${unavailable.map(id => VITALS[id].name).join(", ")}.` : ""} Tests cannot rule out a problem on their own.`,
             why: [logged, "No result for these tests since the symptom was logged"],
             mental: info.care,
             rule: "tests", tests: missing, symptoms: [info],
@@ -792,6 +795,7 @@
   }
 
   function openDetail(type) {
+    editingReadingId = null;
     detailType = type;
     if ($("#medical-view").hidden) setView("lab");
     else render();
@@ -928,25 +932,32 @@
     const error = h("div", { class: "med-error", role: "alert" });
     const inputs = def.fields.map(([label, min, max]) => h("label", {}, `${label} (${def.unit})`,
       h("input", { type: "number", min, max, step: def.decimals ? String(10 ** -def.decimals) : "1", required: true, inputmode: "decimal" })));
-    const time = h("input", { type: "datetime-local", required: true, value: localDateTime(Date.now()) });
+    const editing = store.measurements.find(r => r.id === editingReadingId && r.crew === AMIGOS.crewId() && r.type === type);
+    inputs.forEach((label, i) => { if (editing) label.querySelector("input").value = editing.v[i]; });
+    const initialTime = localDateTime(editing ? editing.at : Date.now());
+    const time = h("input", { type: "datetime-local", required: true, value: initialTime });
     const source = h("select", {},
       h("option", { text: def.device }), def.device === "Manual count" ? null : h("option", { text: "Manual entry" }));
+    if (editing) source.value = editing.source;
     const form = h("form", { novalidate: true },
       h("div", { class: "two-column" }, ...inputs,
         h("label", {}, "Measured at", time), h("label", {}, "Source / device", source)),
       error,
       h("div", { class: "step-actions" },
-        h("span", { class: "med-caption", text: `Saved for ${crew().name}.` }),
-        h("button", { class: "primary", type: "submit" }, "Save reading ", h("span", { "aria-hidden": "true", text: "✓" }))));
+        h("span", { class: "med-caption", text: showSamples ? "Switch off demonstration mode to save personal readings." : `Saved for ${crew().name}.` }),
+        h("button", { class: "primary", type: "submit", disabled: showSamples }, editing ? "Update reading" : "Save reading"),
+        editing ? h("button", { class: "secondary", type: "button", text: "Cancel edit",
+          onclick: () => { editingReadingId = null; renderDetail(); } }) : null));
     form.addEventListener("submit", event => {
       event.preventDefault();
+      if (showSamples) { error.textContent = "Switch off demonstration mode to save personal readings."; return; }
       const values = inputs.map(label => label.querySelector("input"));
       const invalid = [...values, time].find(input => !input.checkValidity());
       if (invalid) {
         invalid.reportValidity();
         return;
       }
-      const at = new Date(time.value).getTime();
+      const at = time.value === initialTime ? (editing ? editing.at : Date.now()) : new Date(time.value).getTime();
       if (!Number.isFinite(at) || at > Date.now() + 60000) {
         error.textContent = "Choose a measurement time that is not in the future.";
         return;
@@ -956,11 +967,15 @@
         error.textContent = "Check the numbers: the top (systolic) value must be higher than the bottom (diastolic) value.";
         return;
       }
-      store.measurements.push({ id: crypto.randomUUID(), crew: AMIGOS.crewId(), type, v, at, source: source.value });
+      const previous = store.measurements;
+      const entry = { ...(editing || {}), id: editing?.id || crypto.randomUUID(), crew: AMIGOS.crewId(), type, v, at,
+        updatedAt: Date.now(), source: source.value || def.device };
+      store.measurements = [...previous.filter(r => r.id !== entry.id), entry];
       if (!saveStore()) {
-        store.measurements.pop();
+        store.measurements = previous;
         return;
       }
+      editingReadingId = null;
       showToast(`${def.name} reading saved for ${crew().name}.`);
       render();
       renderRoutineStrip();
@@ -1040,7 +1055,10 @@
     const rows = list.slice(-6).reverse().map(r => [
       r.file ? attachmentPreview(r) : `${def.format(r)} ${def.unit}`.trim(), `${formatTime(r.at)} · ${ago(r.at)}`,
       r.source + (r.sample ? " (sample)" : ""),
-      r.sample ? "–" : h("button", {
+      r.sample ? "-" : h("div", {}, r.file ? null : h("button", {
+        class: "med-link", type: "button", text: "Edit",
+        onclick: () => { editingReadingId = r.id; renderDetail(); }
+      }), h("button", {
         class: "med-link is-delete", type: "button", text: "Delete",
         onclick: async () => {
           if (!confirm("Delete this reading? This cannot be undone.")) return;
@@ -1054,7 +1072,7 @@
           render();
           renderRoutineStrip();
         }
-      })
+      }))
     ]);
     box.append(h("section", { class: "step-panel", "aria-labelledby": "med-detail-heading" },
       h("div", { class: "panel-heading" },
@@ -1076,7 +1094,7 @@
       h("h3", { class: "med-sub", text: "How to measure" }),
       h("ol", { class: "med-steps" }, ...def.steps.map(text => h("li", { text }))),
       h("p", { class: "helper-note", text: "General technique. If your device's mission procedure differs, follow the procedure." }),
-      h("h3", { class: "med-sub", text: def.fields ? "Add a reading" : "Recording" }),
+      h("h3", { class: "med-sub", text: def.fields ? (editingReadingId ? "Edit reading" : "Add a reading") : "Recording" }),
       readingForm(type)));
   }
 
@@ -1361,10 +1379,10 @@
     }
 
     // Quick assessment and recommendations (same list as the Daily check-in).
-    const results = ids.map(id => all[id]).filter(r => !(r.kind === "vital" && (VITALS[r.id].noAuto || VITALS[r.id].noRange)));
+    const results = ids.map(id => all[id]).filter(r => r.kind !== "vital" || included(r.id));
     const out = results.filter(flagged);
     const open = results.filter(r => r.zone === "recheck" || r.zone === "nodata");
-    const banner = !results.length ? ["nodata", "?", "No results to assess", "Every test is unticked for this vehicle, or none has a result. Nothing is shown as normal."] :
+    const banner = !results.length ? ["nodata", "?", "No results to assess", "No selected test has an interpretable result. Nothing is shown as normal."] :
       out.length ? ["over", "▲", `${out.length} result${out.length > 1 ? "s" : ""} outside the normal range`, out.map(r => r.name).join(", ")] :
       open.length ? ["nodata", "?", "Some results are missing or need a recheck", open.map(r => r.name).join(", ")] :
       ["normal", "✓", "No flagged comparable readings", "Comparable readings are in range. Recorded self-reports and unclassified measurements are not medical clearance."];
@@ -1446,7 +1464,7 @@
     box.replaceChildren();
     const width = box.clientWidth - 34;
     const marks = symptomsFor().filter(s => s.name === current.symptom && s.at >= from);
-    current.vitals.forEach(type => {
+    current.vitals.filter(included).forEach(type => {
       const def = VITALS[type];
       const latest = readingsFor(type).at(-1);
       box.append(h("div", { class: "med-chart-block" },
@@ -1494,37 +1512,36 @@
   /* ---------- Laboratory: tests ---------- */
 
   let preset = "all";
-  const PRESETS = [["all", "All tests"], ["daily", "Daily check"], ["monthly", "Monthly check"], ["trauma", "After an injury"]];
+  const PRESETS = [["all", "All tests"], ["daily", "Daily check"], ["weekly", "Weekly check"], ["monthly", "Monthly check"], ["trauma", "After an injury"]];
 
   function testRow(test) {
     const def = VITALS[test.id];
     const on = available(test.id);
     const latest = readingsFor(test.id).at(-1);
     const tick = h("input", {
-      type: "checkbox", checked: on, "aria-label": `${test.name} is carried on this vehicle`,
+      type: "checkbox", checked: on && canAssess(test.id), disabled: !canAssess(test.id), "aria-label": `Include ${test.name} in assessment`,
       onchange: () => {
         const previous = store.unavailable;
         store.unavailable = tick.checked ? previous.filter(id => id !== test.id) : [...previous, test.id];
         if (!saveStore()) store.unavailable = previous;
-        if (!available(test.id) && detailType === test.id) detailType = null;
         render();
         renderRoutineStrip();
       }
     });
-    const result = !on ? h("div", { class: "med-test-result" }, h("small", { text: "Unticked: not on this vehicle" })) :
-      latest ? h("div", { class: "med-test-result" },
+    const result = latest ? h("div", { class: "med-test-result" },
         h("span", { text: `${def.format(latest)} ${def.unit}`.trim() }), pill(assess(test.id, latest).key),
         h("small", { text: `${ago(latest.at)}${latest.sample ? " (sample)" : ""}` })) :
       h("div", { class: "med-test-result" }, pill("nodata"), h("small", { text: "No result yet" }));
     return h("div", { class: `med-test${on ? "" : " is-off"}` },
       tick,
       h("div", {}, h("b", { text: test.name }), h("small", { text: test.why }),
+        h("small", { text: !canAssess(test.id) ? "Record only: no automatic interpretation rule." : on ? "Included in assessment" : "Excluded from assessment" }),
         h("small", { text: `${test.frequency} · ${test.device}` })),
       result,
-      on ? h("button", {
+      h("button", {
         class: "secondary", type: "button", text: def.fields ? "Enter result" : "Import file",
         onclick: () => openDetail(test.id)
-      }) : null);
+      }));
   }
 
   function renderTests() {
@@ -1541,7 +1558,7 @@
     const box = $("#med-testlist");
     box.replaceChildren();
     DATA.systems.forEach(item => {
-      const tests = DATA.tests.filter(test => test.system === item.id && (preset === "all" || test.presets.includes(preset)));
+      const tests = DATA.tests.filter(test => test.system === item.id && (preset === "all" || test.frequency.toLowerCase() === preset || test.presets.includes(preset)));
       if (!tests.length) return;
       box.append(h("section", { class: "med-system-block" },
         h("h3", { text: item.name }),
@@ -1587,7 +1604,7 @@
     const testButtons = result.tests.length ? h("div", { class: "med-outcome-tests-list" }, ...result.tests.map(id =>
       h("button", { class: "secondary", type: "button", text: VITALS[id].name, onclick: () => openDetail(id) }))) : null;
     const missing = result.missing.length ?
-      h("p", { text: `Not on this vehicle (unticked in Tests): ${result.missing.map(id => VITALS[id].name).join(", ")}.` }) : null;
+      h("p", { text: `Excluded from automatic assessment (unticked in Tests): ${result.missing.map(id => VITALS[id].name).join(", ")}.` }) : null;
     const care = result.care.length ? h("ul", {}, ...result.care.map(text => h("li", { text }))) : null;
     const heading = {
       now: ["▲ Contact the flight surgeon now", "At least one of these needs a fast response. Use your mission procedure now. If it does not delay the call, these tests help the surgeon:"],
@@ -1668,7 +1685,7 @@
           `${def.name}: ${def.format(latest)} ${def.unit} | ${STATUS[status.key].label} | ${formatTime(latest.at)} | ${latest.source}${latest.sample ? " (sample)" : ""} | Trend: ${trendOf(type, list).text}` :
           `${def.name}: no reading | ${STATUS.nodata.label}`;
       })],
-      ["Tests not on this vehicle", (list => list.length ? [list.join(", ")] : ["None unticked"])(DATA.tests.filter(test => !available(test.id)).map(test => test.name))],
+      ["Tests excluded from automatic assessment", (list => list.length ? [list.join(", ")] : ["None unticked"])(DATA.tests.filter(test => !available(test.id)).map(test => test.name))],
       ["Symptoms, selected period", felt.length ? felt.map(s =>
         `${s.name}, strength ${s.severity}/5, ${formatTime(s.at)}${s.note ? ` - ${s.note}` : ""}${s.sample ? " (sample)" : ""}`) : ["None logged"]],
       ["Routine context, latest check-ins", !member.journalOwner ? ["Routine journal on this device is not linked to this crew member"] :

@@ -323,8 +323,8 @@ form.addEventListener("submit", event => {
   const entry = Object.fromEntries(data.entries());
   entry.factors = data.getAll("factors");
   entry.crew = AMIGOS.crewId();
-  if (mine().some(record => record.id !== editingId && record.date === entry.date && record.phase === entry.phase)) {
-    showError("An entry already exists for this date and mission phase. Open My journal to edit it.");
+  if (mine().some(record => record.id !== editingId && record.date === entry.date)) {
+    showError("An entry already exists for this date. Open My journal to edit it.");
     return;
   }
   ["sleepQuality", "appetite", ...QUESTIONS.filter(question => !question.textValue).map(question => question.name)].forEach(name => {

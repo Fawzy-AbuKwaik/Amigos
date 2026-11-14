@@ -35,8 +35,8 @@ storage is separate from storage on the GitHub Pages site.
 | View | What it provides |
 | --- | --- |
 | **Daily check-in** | Four steps covering sleep, food and water, mind and mood, and optional activity/context. Includes validation, a check-in streak, and activity suggestions. |
-| **My journal** | Review, edit, delete, and filter check-ins by mission phase; export the selected crew member's check-ins as JSON. |
-| **Laboratory** | Select tests carried on the vehicle, enter measurements, import ECG/ultrasound files, and log symptoms with severity and time. |
+| **My journal** | One check-in per person per calendar date; review, edit, delete, and filter check-ins by mission phase; export the selected crew member's check-ins as JSON. |
+| **Laboratory** | Select tests for automatic assessment, enter or edit measurements, import ECG/ultrasound files, and log symptoms with severity and time. |
 | **Assessment** | Explore body systems and trends over 7, 30, or 90 days; view recommendations, related indicators, and a case summary for export as text. |
 
 The shared crew selector applies across all views. Recommendations appear in
@@ -61,6 +61,26 @@ both the Daily check-in and Assessment.
   and symptoms separately from personal measurements. Routine check-ins remain
   personal, and an on-screen notice identifies this mode.
 
+### Saving readings and choosing tests
+
+In Laboratory, use **Tests** when you know which measurement to record, or
+**Signs & symptoms** for suggested checks. Filter tests by Daily, Weekly,
+Monthly, or All tests. These are display filters, not prescriptions.
+
+- Save a new measurement with **Save reading**. The current measurement time is
+  captured when saving unless a different time is explicitly entered.
+- Correct a recorded numeric value using **Recent readings > Edit > Update reading**.
+  This updates the same record. Assessment uses the most recent measurement time;
+  entering an older measurement does not replace a newer one.
+- A checked test participates in automatic assessment. Unticked tests remain
+  recordable in Laboratory but are excluded from Assessment and recommendations.
+- Tests without interpretation rules have a disabled checkbox and a **Record only**
+  label. Their stored values/files are available for review without automatic interpretation.
+- Demonstration mode shows sample results and blocks personal measurement saves.
+  Switch it off before entering personal readings.
+- Daily check-ins allow one entry per person per date across mission phases.
+  Correct that entry from **My journal > Edit**.
+
 ### Additional clinical indicators
 
 - **Heart:** echocardiogram file import, alongside ECG and existing measurements.
@@ -77,7 +97,7 @@ both the Daily check-in and Assessment.
 New numeric indicators are recorded without automatic clinical reference bands.
 Use the stated units and the laboratory's own reference interval; the app does
 not diagnose kidney, endocrine, or neurological conditions from these entries.
-Equipment availability and examination schedules must be confirmed by the medical
+Examination schedules must be confirmed by the medical
 team; the new tests appear under **All tests**, rather than a fixed daily/monthly
 schedule.
 

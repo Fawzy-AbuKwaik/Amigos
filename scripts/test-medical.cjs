@@ -24,7 +24,17 @@ class Node {
   get textContent() { return this.children.map(c => c?.textContent ?? String(c)).join(' '); }
   set innerHTML(v) { this.markup = v; this.children = [new Node('svg')]; }
   get firstChild() { return this.children[0]; }
-  querySelector() { return new Node('input'); }
+  querySelector(selector) {
+    const find = node => {
+      for (const child of node.children || []) {
+        if (!(child instanceof Node)) continue;
+        if (child.tagName === selector) return child;
+        const match = find(child); if (match) return match;
+      }
+      return null;
+    };
+    return find(this) || new Node('input');
+  }
   querySelectorAll() { return []; }
   reset() {} focus() {} scrollIntoView() {}
   checkValidity() { return Boolean(this.value); }
@@ -54,10 +64,10 @@ const medical = read('js/medical.js');
 const end = medical.indexOf('  /* ---------- Wiring ---------- */');
 vm.runInContext(medical.slice(0, end) + `
   globalThis.med = { routineIndicator, mindAverage, routineValue, mentalQuestions, buildRecommendations,
-    readingsFor, symptomsFor, assess, decide, combinedSeries, summarySections, renderDashboard,
+    vitalIndicator, included, testRow, readingsFor, symptomsFor, assess, decide, combinedSeries, summarySections, renderDashboard,
     renderTests, renderSymptoms, renderRelated, renderSummary, renderDetail, readingForm,
     saveStore, chart, chartSummary, fileError, attachmentForm, saveAttachment, getAttachment, removeAttachment, systems, allIds, VITALS, STATUS, store,
-    samples: value => { showSamples = value; }, detail: value => { detailType = value; } };
+    edit: value => { editingReadingId = value; }, samples: value => { showSamples = value; }, detail: value => { detailType = value; } };
 })();`, context);
 const m = context.med, data = context.AMIGOS.data;
 const today = context.localDate();
@@ -176,7 +186,7 @@ test('unavailable symptom tests still produce a medical follow-up prompt', () =>
   reset(); m.store.unavailable = ['bp', 'hr', 'glucose'];
   m.store.symptoms.push({ crew: member, name: 'Dizziness', severity: 2, at: now });
   const r = m.buildRecommendations().find(r => r.rule === 'tests');
-  assert(r); assert(r.action.includes('Unavailable')); assert.equal(r.tests.length, 0);
+  assert(r); assert(r.action.includes('Excluded from automatic assessment')); assert.equal(r.tests.length, 0);
 });
 test('poor and pre-symptom readings do not satisfy follow-up testing', () => {
   reset(); m.store.symptoms.push({ crew: member, name: 'Headache', severity: 2, at: now - 2000 });
@@ -283,4 +293,74 @@ async function attachmentChecks() {
   assert(form.textContent.includes('Unable to save'));
   checks++; console.log('PASS metadata failure rolls back both entry and attached file');
 }
+
+
+function descendants(node, tag) {
+  return (node.children || []).flatMap(child => child instanceof Node ?
+    [...(child.tagName === tag ? [child] : []), ...descendants(child, tag)] : []);
+}
+function submitReading(type, values, time) {
+  const form = m.readingForm(type);
+  const inputs = descendants(form, 'input');
+  values.forEach((v, i) => { inputs[i].value = String(v); });
+  if (time) inputs.at(-1).value = time;
+  form.events.submit({ preventDefault() {} });
+  return form;
+}
+test('BP and SpO2 saves immediately update Laboratory, Assessment, recommendations and summary', () => {
+  reset(); m.edit(null);
+  for (const [type, before, after] of [['bp', [88, 56], [118, 76]], ['spo2', [90], [98]]]) {
+    submitReading(type, before);
+    const entry = m.readingsFor(type).at(-1);
+    assert.deepEqual(Array.from(entry.v), before);
+    const count = m.store.measurements.length;
+    m.edit(entry.id);
+    submitReading(type, after);
+    assert.equal(m.store.measurements.length, count, 'edit must replace the original reading');
+    assert.equal(m.readingsFor(type).at(-1).id, entry.id);
+    assert.deepEqual(Array.from(m.readingsFor(type).at(-1).v), after);
+    assert.equal(m.vitalIndicator(type).zone, 'normal');
+    const row = m.testRow(data.tests.find(t => t.id === type));
+    assert(row.textContent.includes(m.VITALS[type].format(m.readingsFor(type).at(-1))));
+    assert(JSON.stringify(m.summarySections()).includes(m.VITALS[type].format(m.readingsFor(type).at(-1))));
+  }
+  assert(!m.buildRecommendations().some(r => r.rule === 'bpfluids'));
+  const persisted = JSON.parse(storage.get('amigos-medical-v1'));
+  assert.equal(persisted.measurements.find(r => r.type === 'spo2').v[0], 98);
+});
+test('new current readings outrank old ones; backdated readings do not replace newer measurements', () => {
+  reset(); m.edit(null);
+  submitReading('bp', [118, 76]);
+  submitReading('bp', [88, 56], '2026-01-01T12:00');
+  assert.equal(m.vitalIndicator('bp').valueText, '118/76 mmHg');
+});
+test('demo mode blocks personal numeric saves', () => {
+  reset(); m.edit(null); m.samples(true);
+  const form = submitReading('spo2', [99]);
+  assert.equal(m.store.measurements.length, 0);
+  assert(form.textContent.includes('Switch off demonstration mode'));
+  m.samples(false);
+});
+test('unchecked tests remain recordable but cannot trigger recommendations', () => {
+  reset(); m.edit(null); m.store.unavailable = ['bp'];
+  submitReading('bp', [88, 56]);
+  assert.equal(m.readingsFor('bp').length, 1);
+  assert(!m.included('bp'));
+  assert(!m.buildRecommendations().some(r => r.rule === 'bpfluids'));
+  assert(m.testRow(data.tests.find(t => t.id === 'bp')).textContent.includes('Enter result'));
+  assert(!m.included('creatinine')); assert(!m.included('ecg'));
+});
+
+
+
+test('failed reading edits restore the original in-memory and persisted values', () => {
+  reset(); m.edit(null); submitReading('spo2', [97]);
+  const entry = m.readingsFor('spo2').at(-1);
+  const originalSet = context.localStorage.setItem;
+  context.localStorage.setItem = () => { throw new Error('Quota exceeded'); };
+  try { m.edit(entry.id); submitReading('spo2', [91]); }
+  finally { context.localStorage.setItem = originalSet; m.edit(null); }
+  assert.equal(m.readingsFor('spo2').at(-1).v[0], 97);
+  assert.equal(JSON.parse(storage.get('amigos-medical-v1')).measurements[0].v[0], 97);
+});
 attachmentChecks().then(() => console.log(`${checks} regression groups passed.`)).catch(error => { console.error(error); process.exitCode = 1; });

@@ -44,3 +44,25 @@ const card=node('card');
 vm.runInNewContext(helpers+history,{QUESTIONS:qs,record:{zero:1,meals:0},card,element:(tag,text)=>({tag,text})});
 assert(card.children[0].text.includes('zero: 1/10'));assert(card.children[0].text.includes('meals: None'));
 console.log('PASS: 7 conflict blocks removed; syntax; single submit/save; 0-10 options and endpoint labels; explicit numeric/text choices; 1-5 symptom scale; no mixed-scale aggregate.');
+
+// Exercise the real check-in submit handler, including its early duplicate guard.
+const submitSource = source.slice(source.indexOf('form.addEventListener("submit"'), source.indexOf('function updateCount()'));
+function submitDaily(existing, incoming, editingId = null, crew = 'c1') {
+  let handler, saved, error;
+  const form = { elements: {date: {value: incoming.date}}, addEventListener(_, fn) { handler = fn; } };
+  const c = {form, currentStep: 0, lastStep: 0, panels: [], storageReady: true, editingId,
+    records: existing, QUESTIONS: [], AMIGOS: {crewId: () => crew, crew: () => ({name: 'Rana'})},
+    FormData: class { entries() {return Object.entries(incoming);} getAll() {return [];} },
+    mine: () => existing.filter(r => r.crew === crew), localDate: () => incoming.date,
+    showError: message => {error = message;}, persist: entries => {saved = entries; return true;},
+    resetForm() {}, updateCount() {}, setView() {}, showToast() {}, crypto: require('node:crypto').webcrypto};
+  vm.createContext(c); vm.runInContext(submitSource, c); handler({preventDefault() {}});
+  return {saved, error};
+}
+const existingDaily = [{id: 'one', crew: 'c1', date: '2026-11-14', phase: 'pre'}];
+assert(submitDaily(existingDaily, {date:'2026-11-14', phase:'during'}).error);
+const editedDaily = submitDaily(existingDaily, {date:'2026-11-14', phase:'during'}, 'one');
+assert.equal(editedDaily.saved.length, 1); assert.equal(editedDaily.saved[0].id, 'one');
+assert.equal(editedDaily.saved[0].phase, 'during');
+assert.equal(submitDaily(existingDaily, {date:'2026-11-14', phase:'during'}, null, 'c2').saved.length, 2);
+console.log('PASS daily submit: one per date across phases, journal edit replaces entry, different crew may log same date.');
