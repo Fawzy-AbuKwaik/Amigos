@@ -461,7 +461,8 @@ function renderToday() {
   const ideas = element("div", undefined, "today-ideas");
   picks.forEach(activity => {
     const card = element("div", undefined, "today-idea");
-    card.append(element("small", `${activity.type.toUpperCase()} · ${activity.minutes} MIN`),
+    const duration = activity.minutes == null ? "MISSION PLAN" : `${activity.minutes} MIN`;
+    card.append(element("small", `${activity.type.toUpperCase()} · ${duration}`),
       element("b", activity.name), element("span", activity.how));
     ideas.append(card);
   });
