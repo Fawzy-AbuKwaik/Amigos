@@ -5,7 +5,7 @@ const QUESTIONS = AMIGOS.data.questions;
 let records = [];
 let editingId = null;
 let currentStep = 0;
-let storageReady = true;
+let storageReady = true;// The mental health questions come from js/data.js, each on a fixed 1-5 scale.
 
 try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -54,38 +54,62 @@ function element(tag, text, className) {
   return node;
 }
 
-// The mental health questions come from js/data.js, each on a fixed 1-5 scale.
+
+
+// Questions and their scales are loaded from js/data.js.
 QUESTIONS.forEach(question => {
   const field = element("fieldset", undefined, "rating-field question");
   const group = element("div", undefined, "rating");
-  group.dataset.labels = question.labels;
+
+  group.dataset.labels = question.labels || "";
   group.dataset.name = question.name;
+  group.dataset.min = question.min ?? 1;
+  group.dataset.max = question.max ?? 5;
+
   field.append(element("legend", question.text), group);
   document.querySelector("#mind-questions").append(field);
 });
+
+
 
 // Every step panel is built before this point, including the questionnaire.
 const panels = [...form.querySelectorAll(".step-panel")];
 const progressItems = [...document.querySelectorAll(".progress li")];
 const lastStep = panels.length - 1;
 
-// Ratings use labeled, keyboard-accessible radio groups.
+
+// Build rating options using each group's own scale.
 document.querySelectorAll(".rating").forEach(group => {
-  group.dataset.labels.split(",").forEach((description, index) => {
+  const labels = (group.dataset.labels || "").split(",");
+  const min = Number(group.dataset.min ?? 1);
+  const max = Number(group.dataset.max ?? labels.length);
+
+  for (let value = min; value <= max; value++) {
     const label = document.createElement("label");
     const input = document.createElement("input");
+
     input.type = "radio";
     input.name = group.dataset.name;
-    input.value = index + 1;
+    input.value = value;
     input.required = true;
+
     const content = document.createElement("span");
     const number = document.createElement("b");
-    number.textContent = index + 1;
-    content.append(number, document.createTextNode(description));
+
+    number.textContent = value;
+
+    const description = labels[value - min]?.trim() || "";
+
+    content.append(
+      number,
+      document.createTextNode(description)
+    );
+
     label.append(input, content);
     group.append(label);
-  });
+  }
 });
+
 
 const contextFactors = [
   "Workload", "Schedule change", "Noise / light", "Limited privacy",
@@ -278,17 +302,33 @@ form.addEventListener("submit", event => {
     entry[name] = entry[name] === "" ? null : Number(entry[name]);
   });
   // One number for the questionnaire, so it can be followed over time.
-  entry.mind = Number((QUESTIONS.reduce((sum, question) => sum + entry[question.name], 0) / QUESTIONS.length).toFixed(1));
-  entry.id = editingId || crypto.randomUUID();
-  entry.updatedAt = new Date().toISOString();
-  if (persist([...records.filter(record => record.id !== entry.id), entry])) {
-    resetForm();
-    updateCount();
-    setView("checkin");
-    showToast(`Check-in saved for ${AMIGOS.crew().name}.`);
-  }
-});
+const sameScale = QUESTIONS.length > 0 && QUESTIONS.every(question =>
+  (question.min ?? 1) === (QUESTIONS[0].min ?? 1) &&
+  (question.max ?? 5) === (QUESTIONS[0].max ?? 5) &&
+  (question.direction ?? "higher") ===
+    (QUESTIONS[0].direction ?? "higher")
+);
 
+entry.mind = sameScale
+  ? Number((
+      QUESTIONS.reduce(
+        (sum, question) => sum + entry[question.name], 0
+      ) / QUESTIONS.length
+    ).toFixed(1))
+  : null;
+
+entry.mindMax = sameScale ? (QUESTIONS[0].max ?? 5) : null;
+
+entry.id = editingId || crypto.randomUUID();
+entry.updatedAt = new Date().toISOString();
+
+if (persist([...records.filter(record => record.id !== entry.id), entry])) {
+  resetForm();
+  updateCount();
+  setView("checkin");
+  showToast(`Check-in saved for ${AMIGOS.crew().name}.`);
+}
+});
 function updateCount() {
   document.querySelector("#count").textContent = mine().length;
 }
@@ -341,7 +381,18 @@ function renderHistory() {
       ["Appetite", displayValue(record.appetite, " / 5")],
       ["Meals", displayValue(record.meals)],
       ["Water", displayValue(record.water, " mL")],
-      ["Mind score", displayValue(record.mind ?? record.mood, " / 5")],
+      
+      
+["Mind score", record.mind == null
+  ? "Not scored"
+  : displayValue(
+      record.mind,
+      ` / ${record.mindMax ?? 5}`
+    )
+],
+
+
+
       ["Exercise", displayValue(record.activity, " min")],
       ["Caffeinated drinks", displayValue(record.caffeine)]
     ];
@@ -352,10 +403,23 @@ function renderHistory() {
     });
     card.append(header, metrics);
     card.append(element("p", `Sleep window: ${record.sleepStart.replace("T", " ")} to ${record.sleepEnd.replace("T", " ")}`));
-    const answers = QUESTIONS.filter(question => record[question.name]).map(question => {
-      const label = question.labels.split(",")[record[question.name] - 1];
-      return `${question.name[0].toUpperCase()}${question.name.slice(1)}: ${label}`;
-    });
+    
+const answers = QUESTIONS
+  .filter(question =>
+    record[question.name] !== undefined &&
+    record[question.name] !== null &&
+    record[question.name] !== ""
+  )
+  .map(question => {
+    const value = Number(record[question.name]);
+    const min = question.min ?? 1;
+    const max = question.max ?? 5;
+    const labels = (question.labels || "").split(",");
+    const label = labels[value - min]?.trim();
+
+    return `${question.text}: ${value}/${max}${label ? ` (${label})` : ""}`;
+  });
+
     if (answers.length) card.append(element("p", `Mental health answers: ${answers.join(" / ")}`));
     if (record.caffeineTime) card.append(element("p", `Last caffeinated drink: ${record.caffeineTime}`));
     if (record.factors?.length) card.append(element("p", `Context: ${record.factors.join(" / ")}`));
@@ -364,20 +428,40 @@ function renderHistory() {
   });
 }
 
+
 function editEntry(record) {
   resetForm();
   editingId = record.id;
+
   for (const [name, value] of Object.entries(record)) {
-    if (["id", "factors", "updatedAt", "crew", "mind"].includes(name)) continue;
-    const input = form.elements.namedItem(name);
-    if (input) input.value = value ?? "";
+    if ([
+      "id", "factors", "updatedAt",
+      "crew", "mind", "mindMax"
+    ].includes(name)) continue;
+
+    const controls = form.querySelectorAll(
+      `[name="${CSS.escape(name)}"]`
+    );
+
+    controls.forEach(input => {
+      if (input.type === "radio" || input.type === "checkbox") {
+        input.checked = String(input.value) === String(value);
+      } else {
+        input.value = value ?? "";
+      }
+    });
   }
-  form.querySelectorAll("[name=factors]").forEach(input => {
+
+  // Restore all selected context factors.
+  form.querySelectorAll('[name="factors"]').forEach(input => {
     input.checked = record.factors?.includes(input.value) || false;
   });
+
   updateSleepWindow();
+
   document.querySelector("#edit-banner").hidden = false;
   document.querySelector("#save-button").textContent = "Update check-in";
+
   setView("checkin");
   showStep(0);
 }
@@ -395,22 +479,75 @@ function streakDays() {
   return count;
 }
 
-// Activities matched to the latest answers; a rotating mix when nothing is low.
+
 function suggestedActivities(latest) {
-  const activities = AMIGOS.data.activities;
-  const low = latest ? QUESTIONS.filter(question => latest[question.name] && latest[question.name] <= 2)
-    .map(question => question.tag) : [];
-  if (latest && latest.sleepQuality <= 2) low.push("sleep");
-  const matched = activities.filter(activity => activity.goodFor.some(tag => low.includes(tag)));
-  if (matched.length) return { picks: matched.slice(0, 3), reason: `Chosen from your latest answers: ${low.join(", ")} rated low.` };
+  const activities = AMIGOS.data.activities || [];
+  const low = [];
+
+  if (latest) {
+    QUESTIONS.forEach(question => {
+      const raw = latest[question.name];
+
+      if (raw === null || raw === undefined || raw === "") return;
+
+      const value = Number(raw);
+      const min = Number(question.min ?? 1);
+      const max = Number(question.max ?? 5);
+
+      if (!Number.isFinite(value) || max <= min) return;
+
+      const normalized = (value - min) / (max - min);
+      const direction = question.direction ?? "higher";
+
+      // Lower scores are worse unless the scale says otherwise.
+      const needsSupport = direction === "lower"
+        ? normalized >= 0.75
+        : normalized <= 0.25;
+
+      if (needsSupport && question.tag) {
+        low.push(question.tag);
+      }
+    });
+
+    if (latest.sleepQuality != null &&
+        Number(latest.sleepQuality) <= 2) {
+      low.push("sleep");
+    }
+  }
+
+  const matched = activities.filter(activity =>
+    Array.isArray(activity.goodFor) &&
+    activity.goodFor.some(tag => low.includes(tag))
+  );
+
+  if (matched.length) {
+    return {
+      picks: matched.slice(0, 3),
+      reason: `Suggested based on your latest check-in: ${[...new Set(low)].join(", ")}.`
+    };
+  }
+
+  if (!activities.length) {
+    return {
+      picks: [],
+      reason: "No suggested activities available."
+    };
+  }
+
   const start = new Date().getDate() % activities.length;
-  const picks = [0, 4, 8].map(offset => activities[(start + offset) % activities.length]);
+  const offsets = [0, 4, 8];
+  const picks = offsets
+    .map(offset => activities[(start + offset) % activities.length])
+    .filter((activity, index, array) => array.indexOf(activity) === index);
+
   return {
     picks,
-    reason: latest ? "A mix for today. Nothing in your latest check-in was rated low." :
-      "A mix for today. Save a check-in to get suggestions matched to your answers."
+    reason: latest
+      ? "General activity ideas for today."
+      : "Save a check-in to get suggestions matched to your answers."
   };
 }
+
 
 // Today's plan: streak, today's status and suggested activities for the active crew member.
 function renderToday() {
