@@ -1,14 +1,29 @@
+
+
 // Keep the original key so existing daily entries survive the redesign.
 const STORAGE_KEY = "amigos-routine-v1";
 const form = document.querySelector("#routine-form");
 const QUESTIONS = AMIGOS.data.questions;
-// The label of a saved answer; older numeric entries that are not one of the choices return null.
+// Numeric scale bounds and explicit answer choices are separate concepts.
+// In the older data, question.min may be an array of sleep-band lower bounds.
+function questionScale(question) {
+  const min = typeof question.scaleMin === "number" ? question.scaleMin :
+    typeof question.min === "number" ? question.min : 1;
+  const labels = (question.labels || "").split(",");
+  const max = typeof question.scaleMax === "number" ? question.scaleMax :
+    typeof question.max === "number" ? question.max : min + Math.max(labels.length, 1) - 1;
+  return { min, max };
+}
+
 function answerLabel(name, value) {
   const question = QUESTIONS.find(item => item.name === name);
   if (!question || value === undefined || value === null || value === "") return null;
-  const index = question.values ? question.values.findIndex(item => String(item) === String(value)) : Number(value) - 1;
-  return index >= 0 ? question.labels.split(",")[index] : null;
+  const index = question.values ? question.values.findIndex(item => String(item) === String(value)) :
+    Number(value) - questionScale(question).min;
+  const label = index >= 0 && Number.isInteger(index) ? (question.labels || "").split(",")[index]?.trim() : null;
+  return label || null;
 }
+
 let records = [];
 let editingId = null;
 let currentStep = 0;
@@ -61,12 +76,19 @@ function element(tag, text, className) {
   return node;
 }
 
-// The mental health questions come from js/data.js, each on a fixed 1-5 scale.
+
+
+// Questions and their scales are loaded from js/data.js.
 QUESTIONS.forEach(question => {
   const field = element("fieldset", undefined, "rating-field question");
   const group = element("div", undefined, "rating");
-  group.dataset.labels = question.labels;
+
+  group.dataset.labels = question.labels || "";
   group.dataset.name = question.name;
+  if (typeof question.min === "number") group.dataset.min = question.min;
+  if (typeof question.max === "number") group.dataset.max = question.max;
+  if (typeof question.scaleMin === "number") group.dataset.min = question.scaleMin;
+  if (typeof question.scaleMax === "number") group.dataset.max = question.scaleMax;
   if (question.values) group.dataset.values = JSON.stringify(question.values);
   field.append(element("legend", question.text), group);
   if (question.source) {
@@ -87,25 +109,36 @@ QUESTIONS.forEach(question => {
   document.querySelector(`#${question.slot || "mind"}-questions`).append(field);
 });
 
+
+
 // Every step panel is built before this point, including the questionnaire.
 const panels = [...form.querySelectorAll(".step-panel")];
 const progressItems = [...document.querySelectorAll(".progress li")];
 const lastStep = panels.length - 1;
 
-// Ratings use labeled, keyboard-accessible radio groups.
+
+// Explicit choices retain their stored values. Scales use their own bounds.
+// Static symptom severity groups default to their existing 1-5 labels.
 document.querySelectorAll(".rating").forEach(group => {
-  const values = group.dataset.values ? JSON.parse(group.dataset.values) : null;
-  group.dataset.labels.split(",").forEach((description, index) => {
+  const labels = (group.dataset.labels || "").split(",");
+  const explicit = group.dataset.values ? JSON.parse(group.dataset.values) : null;
+  const min = Number(group.dataset.min ?? 1);
+  const max = Number(group.dataset.max ?? (min + labels.length - 1));
+  const values = explicit || Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
+  values.forEach((value, index) => {
     const label = document.createElement("label");
     const input = document.createElement("input");
     input.type = "radio";
     input.name = group.dataset.name;
-    input.value = values ? values[index] : index + 1;
+    input.value = value;
     input.required = true;
     const content = document.createElement("span");
-    const number = document.createElement("b");
-    number.textContent = index + 1;
-    content.append(number, document.createTextNode(description));
+    if (!explicit) {
+      const number = document.createElement("b");
+      number.textContent = value;
+      content.append(number);
+    }
+    content.append(document.createTextNode(labels[index]?.trim() || ""));
     label.append(input, content);
     group.append(label);
   });
@@ -189,9 +222,16 @@ function validateStep(index) {
     }
     // The sleep answer is a band; its lower end cannot be longer than the window.
     const sleepQuestion = QUESTIONS.find(item => item.name === "sleepHours");
-    const band = sleepQuestion.values.findIndex(value => String(value) === form.elements.sleepHours.value);
-    if (band >= 0 && sleepQuestion.min[band] > windowHours + 0.01) {
-      return showError("Actual sleep cannot be longer than the time between sleep start and wake-up.");
+    if (Array.isArray(sleepQuestion?.values) && Array.isArray(sleepQuestion.min)) {
+      const band = sleepQuestion.values.findIndex(value => String(value) === form.elements.sleepHours.value);
+      if (band >= 0 && sleepQuestion.min[band] > windowHours + 0.01) {
+        return showError("Actual sleep cannot be longer than the time between sleep start and wake-up.");
+      }
+    } else {
+      const actual = form.elements.sleepHours.value;
+      if (actual !== "" && Number(actual) > windowHours + 0.01) {
+        return showError("Actual sleep cannot be longer than the time between sleep start and wake-up.");
+      }
     }
   }
   if (panels[index].querySelector('[data-name="caffeineTime"]')) {
@@ -307,9 +347,18 @@ form.addEventListener("submit", event => {
   ["activity", "water", "caffeine", "meals"].forEach(name => {
     entry[name] = entry[name] === "" ? null : Number(entry[name]);
   });
-  // One number for the questionnaire, so it can be followed over time.
-  const mental = QUESTIONS.filter(question => question.mind !== false);
-  entry.mind = Number((mental.reduce((sum, question) => sum + entry[question.name], 0) / mental.length).toFixed(1));
+  // Preserve the old descriptive 1-5 mean only for compatible mental items.
+  // Numeric measurements, choices and new 0-10/AMS scales never enter it.
+  const mental = QUESTIONS.filter(question => question.mind !== false && !question.metric &&
+    !question.choice && !question.textValue && !question.values);
+  const sameScale = mental.length > 0 && mental.every(question => {
+    const { min, max } = questionScale(question);
+    return min === 1 && max === 5 && !question.instrument &&
+      !question.name.endsWith("AMS") && (question.direction ?? "higher") === "higher" &&
+      Number.isFinite(entry[question.name]) && entry[question.name] >= min && entry[question.name] <= max;
+  });
+  entry.mind = sameScale ? Number((mental.reduce((sum, question) => sum + entry[question.name], 0) / mental.length).toFixed(1)) : null;
+  entry.mindMax = sameScale ? 5 : null;
   entry.id = editingId || crypto.randomUUID();
   entry.updatedAt = new Date().toISOString();
   if (persist([...records.filter(record => record.id !== entry.id), entry])) {
@@ -372,7 +421,7 @@ function renderHistory() {
       ["Appetite", displayValue(record.appetite, " / 5")],
       ["Meals", answerLabel("meals", record.meals) ?? displayValue(record.meals)],
       ["Water", answerLabel("water", record.water) ?? displayValue(record.water, " mL")],
-      ["Mind score", displayValue(record.mind ?? record.mood, " / 5")],
+      ["Mind score", record.mind == null ? "Not scored" : displayValue(record.mind, ` / ${record.mindMax ?? 5}`)],
       ["Exercise", answerLabel("activity", record.activity) ?? displayValue(record.activity, " min")],
       ["Caffeinated drinks", answerLabel("caffeine", record.caffeine) ?? displayValue(record.caffeine)]
     ];
@@ -383,10 +432,17 @@ function renderHistory() {
     });
     card.append(header, metrics);
     card.append(element("p", `Sleep window: ${record.sleepStart.replace("T", " ")} to ${record.sleepEnd.replace("T", " ")}`));
-    const answers = QUESTIONS.filter(question => !question.metric && answerLabel(question.name, record[question.name])).map(question => {
-      return `${question.short || question.name}: ${answerLabel(question.name, record[question.name])}`;
+    const answers = QUESTIONS.filter(question => !question.metric &&
+      record[question.name] !== undefined && record[question.name] !== null && record[question.name] !== "").map(question => {
+      const raw = record[question.name];
+      const label = answerLabel(question.name, raw);
+      if (question.values || question.choice || question.textValue) {
+        return `${question.short || question.name}: ${label ?? raw}`;
+      }
+      const { max } = questionScale(question);
+      return `${question.short || question.name}: ${raw}/${max}${label ? ` (${label})` : ""}`;
     });
-    if (answers.length) card.append(element("p", `Mental health answers: ${answers.join(" / ")}`));
+    if (answers.length) card.append(element("p", `Check-in answers: ${answers.join(" / ")}`));
     if (record.caffeineTime) card.append(element("p", `Last caffeinated drink: ${answerLabel("caffeineTime", record.caffeineTime) ?? record.caffeineTime}`));
     if (record.factors?.length) card.append(element("p", `Context: ${record.factors.join(" / ")}`));
     if (record.notes) card.append(element("p", record.notes));
@@ -394,20 +450,40 @@ function renderHistory() {
   });
 }
 
+
 function editEntry(record) {
   resetForm();
   editingId = record.id;
+
   for (const [name, value] of Object.entries(record)) {
-    if (["id", "factors", "updatedAt", "crew", "mind"].includes(name)) continue;
-    const input = form.elements.namedItem(name);
-    if (input) input.value = value ?? "";
+    if ([
+      "id", "factors", "updatedAt",
+      "crew", "mind", "mindMax"
+    ].includes(name)) continue;
+
+    const controls = form.querySelectorAll(
+      `[name="${CSS.escape(name)}"]`
+    );
+
+    controls.forEach(input => {
+      if (input.type === "radio" || input.type === "checkbox") {
+        input.checked = String(input.value) === String(value);
+      } else {
+        input.value = value ?? "";
+      }
+    });
   }
-  form.querySelectorAll("[name=factors]").forEach(input => {
+
+  // Restore all selected context factors.
+  form.querySelectorAll('[name="factors"]').forEach(input => {
     input.checked = record.factors?.includes(input.value) || false;
   });
+
   updateSleepWindow();
+
   document.querySelector("#edit-banner").hidden = false;
   document.querySelector("#save-button").textContent = "Update check-in";
+
   setView("checkin");
   showStep(0);
 }
@@ -425,22 +501,63 @@ function streakDays() {
   return count;
 }
 
-// Activities matched to the latest answers; a rotating mix when nothing is low.
+
 function suggestedActivities(latest) {
-  const activities = AMIGOS.data.activities;
-  const low = latest ? QUESTIONS.filter(question => question.low !== false && latest[question.name] && latest[question.name] <= 2)
-    .map(question => question.tag) : [];
-  if (latest && latest.sleepQuality <= 2) low.push("sleep");
-  const matched = activities.filter(activity => activity.goodFor.some(tag => low.includes(tag)));
-  if (matched.length) return { picks: matched.slice(0, 3), reason: `Chosen from your latest answers: ${low.join(", ")} rated low.` };
+  const activities = AMIGOS.data.activities || [];
+  const low = [];
+
+  if (latest) {
+    QUESTIONS.forEach(question => {
+      if (question.low === false || question.metric || question.choice || question.values || question.textValue) return;
+      const raw = latest[question.name];
+      if (raw === null || raw === undefined || raw === "") return;
+      const value = Number(raw);
+      const { min, max } = questionScale(question);
+      // Keep the old 1-5 rule only. No thresholds are inferred for other scales.
+      if (min !== 1 || max !== 5 || question.instrument || question.name.endsWith("AMS") ||
+          (question.direction ?? "higher") !== "higher") return;
+      if (Number.isFinite(value) && value >= min && value <= 2 && question.tag) low.push(question.tag);
+    });
+
+    if (latest.sleepQuality != null &&
+        Number(latest.sleepQuality) <= 2) {
+      low.push("sleep");
+    }
+  }
+
+  const matched = activities.filter(activity =>
+    Array.isArray(activity.goodFor) &&
+    activity.goodFor.some(tag => low.includes(tag))
+  );
+
+  if (matched.length) {
+    return {
+      picks: matched.slice(0, 3),
+      reason: `Suggested based on your latest check-in: ${[...new Set(low)].join(", ")}.`
+    };
+  }
+
+  if (!activities.length) {
+    return {
+      picks: [],
+      reason: "No suggested activities available."
+    };
+  }
+
   const start = new Date().getDate() % activities.length;
-  const picks = [0, 4, 8].map(offset => activities[(start + offset) % activities.length]);
+  const offsets = [0, 4, 8];
+  const picks = offsets
+    .map(offset => activities[(start + offset) % activities.length])
+    .filter((activity, index, array) => array.indexOf(activity) === index);
+
   return {
     picks,
-    reason: latest ? "A mix for today. Nothing in your latest check-in was rated low." :
-      "A mix for today. Save a check-in to get suggestions matched to your answers."
+    reason: latest
+      ? "General activity ideas for today."
+      : "Save a check-in to get suggestions matched to your answers."
   };
 }
+
 
 // Today's plan: streak, today's status and suggested activities for the active crew member.
 function renderToday() {
@@ -461,7 +578,8 @@ function renderToday() {
   const ideas = element("div", undefined, "today-ideas");
   picks.forEach(activity => {
     const card = element("div", undefined, "today-idea");
-    card.append(element("small", `${activity.type.toUpperCase()} · ${activity.minutes} MIN`),
+    const duration = activity.minutes == null ? "MISSION PLAN" : `${activity.minutes} MIN`;
+    card.append(element("small", `${activity.type.toUpperCase()} · ${duration}`),
       element("b", activity.name), element("span", activity.how));
     ideas.append(card);
   });
