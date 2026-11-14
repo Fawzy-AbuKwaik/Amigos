@@ -91,21 +91,7 @@ QUESTIONS.forEach(question => {
   if (typeof question.scaleMax === "number") group.dataset.max = question.scaleMax;
   if (question.values) group.dataset.values = JSON.stringify(question.values);
   field.append(element("legend", question.text), group);
-  if (question.source) {
-    // Source line; web addresses become links.
-    const note = element("p", undefined, "field-hint question-source");
-    note.append("Source: ");
-    question.source.split(/(https?:\/\/[^\s;,]+)/).forEach(part => {
-      if (/^https?:\/\//.test(part)) {
-        const link = element("a", part);
-        link.href = part;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        note.append(link);
-      } else note.append(part);
-    });
-    field.append(note);
-  }
+  // Research provenance stays in data.js; keep the check-in focused on answers.
   document.querySelector(`#${question.slot || "mind"}-questions`).append(field);
 });
 
