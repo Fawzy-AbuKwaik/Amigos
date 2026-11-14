@@ -451,6 +451,15 @@
       <label><input name="medperiod" type="radio" value="30"/><span>Last 30 days</span></label>
       <label><input name="medperiod" type="radio" value="90"/><span>Last 90 days</span></label>
      </fieldset>
+     <section class="med-pane med-hazards-pane">
+      <div class="med-pane-head"><h2>Mission hazards</h2><span>PARAMETERS FOR THIS PLACE</span></div>
+      <div class="med-env">
+       <label>Spacecraft or location <select id="med-place"></select></label>
+       <button class="secondary" id="med-env-reset" type="button">Reset to example values</button>
+      </div>
+      <p class="med-quiet" id="med-env-note"></p>
+      <div class="med-hazards" id="med-hazards"></div>
+     </section>
      <div class="med-overview">
       <section class="med-pane med-pane-body">
        <div class="med-pane-head"><h2>Body systems</h2><span>SELECT TO EXPLORE</span></div>
