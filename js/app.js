@@ -1,9 +1,7 @@
 // Keep the original key so existing daily entries survive the redesign.
 const STORAGE_KEY = "amigos-routine-v1";
 const form = document.querySelector("#routine-form");
-const panels = [...document.querySelectorAll(".step-panel")];
-const progressItems = [...document.querySelectorAll(".progress li")];
-const touchedSliders = new Set();
+const QUESTIONS = AMIGOS.data.questions;
 let records = [];
 let editingId = null;
 let currentStep = 0;
@@ -18,8 +16,12 @@ try {
   storageReady = false;
 }
 
-function localDate() {
-  const date = new Date();
+// Entries belong to one crew member. Entries saved before crew selection existed
+// are kept and shown under the first crew member.
+const ownerOf = record => record.crew || AMIGOS.data.crew[0].id;
+const mine = () => records.filter(record => ownerOf(record) === AMIGOS.crewId());
+
+function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
@@ -44,7 +46,30 @@ function persist(nextRecords) {
   }
 }
 
-// Mood and sleep quality use labeled, keyboard-accessible radio groups.
+// textContent prevents notes from being interpreted as executable HTML.
+function element(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+
+// The mental health questions come from js/data.js, each on a fixed 1-5 scale.
+QUESTIONS.forEach(question => {
+  const field = element("fieldset", undefined, "rating-field question");
+  const group = element("div", undefined, "rating");
+  group.dataset.labels = question.labels;
+  group.dataset.name = question.name;
+  field.append(element("legend", question.text), group);
+  document.querySelector("#mind-questions").append(field);
+});
+
+// Every step panel is built before this point, including the questionnaire.
+const panels = [...form.querySelectorAll(".step-panel")];
+const progressItems = [...document.querySelectorAll(".progress li")];
+const lastStep = panels.length - 1;
+
+// Ratings use labeled, keyboard-accessible radio groups.
 document.querySelectorAll(".rating").forEach(group => {
   group.dataset.labels.split(",").forEach((description, index) => {
     const label = document.createElement("label");
@@ -76,35 +101,6 @@ contextFactors.forEach(factor => {
   text.textContent = factor;
   label.append(input, text);
   document.querySelector("#factors").append(label);
-});
-
-// A slider starts with no recorded answer, rather than silently saving 5/10.
-function refreshSliders() {
-  ["stress", "fatigue"].forEach(name => {
-    const answered = touchedSliders.has(name);
-    const input = form.elements[name];
-    document.querySelector(`#${name}-value`).textContent = answered ?
-      `${input.value} / 10` : "Choose";
-    input.setAttribute("aria-valuetext", answered ?
-      `${input.value} out of 10` : "Not answered. Move the slider to choose.");
-  });
-}
-["stress", "fatigue"].forEach(name => {
-  const input = form.elements[name];
-  const markAnswered = () => {
-    touchedSliders.add(name);
-    refreshSliders();
-  };
-  input.addEventListener("input", markAnswered);
-  input.addEventListener("change", markAnswered);
-  // Clicking the existing thumb also allows an intentional mid-scale answer.
-  input.addEventListener("pointerup", markAnswered);
-  input.addEventListener("keydown", event => {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
-      touchedSliders.add(name);
-      setTimeout(refreshSliders, 0);
-    }
-  });
 });
 
 function sleepWindowHours() {
@@ -145,9 +141,9 @@ function showStep(index, focusHeading = true) {
     else item.removeAttribute("aria-current");
   });
   document.querySelector("#back-button").hidden = index === 0;
-  document.querySelector("#next-button").hidden = index === 2;
-  document.querySelector("#save-button").hidden = index !== 2;
-  document.querySelector("#step-caption").textContent = `Step ${index + 1} of 3`;
+  document.querySelector("#next-button").hidden = index === lastStep;
+  document.querySelector("#save-button").hidden = index !== lastStep;
+  document.querySelector("#step-caption").textContent = `Step ${index + 1} of ${panels.length}`;
   document.querySelector("#form-error").textContent = "";
   if (focusHeading) panels[index].querySelector("h2").focus();
 }
@@ -171,10 +167,7 @@ function validateStep(index) {
       return showError("Actual sleep cannot be longer than the time between sleep start and wake-up.");
     }
   }
-  if (index === 1 && touchedSliders.size < 2) {
-    return showError("Please choose both your stress and tiredness ratings using the sliders.");
-  }
-  if (index === 2 && form.elements.caffeineTime.value &&
+  if (panels[index].contains(form.elements.caffeineTime) && form.elements.caffeineTime.value &&
     (form.elements.caffeine.value === "" || Number(form.elements.caffeine.value) === 0)) {
     return showError("Enter how many caffeinated drinks you had, or clear the last-drink time.");
   }
@@ -186,10 +179,19 @@ document.querySelector("#next-button").addEventListener("click", () => {
 });
 document.querySelector("#back-button").addEventListener("click", () => showStep(currentStep - 1));
 
+const VIEW_TITLES = {
+  checkin: "DAILY CHECK-IN",
+  history: "MY JOURNAL",
+  lab: "LABORATORY",
+  assess: "ASSESSMENT"
+};
+
 function setView(view) {
   document.querySelector("#checkin-view").hidden = view !== "checkin";
   document.querySelector("#history-view").hidden = view !== "history";
-  document.querySelector("#header-view").textContent = view === "checkin" ? "DAILY CHECK-IN" : "MY JOURNAL";
+  // Laboratory and Assessment share one section, drawn by js/medical.js.
+  document.querySelector("#medical-view").hidden = view !== "lab" && view !== "assess";
+  document.querySelector("#header-view").textContent = VIEW_TITLES[view];
   document.querySelectorAll(".nav").forEach(button => {
     const active = button.dataset.view === view;
     button.classList.toggle("active", active);
@@ -197,6 +199,11 @@ function setView(view) {
     else button.removeAttribute("aria-current");
   });
   if (view === "history") renderHistory();
+  if (view === "checkin") renderToday();
+  // Lets the other views (js/medical.js) refresh when the view changes.
+  document.dispatchEvent(new CustomEvent("amigos:view", {
+    detail: view
+  }));
   window.scrollTo({
     top: 0,
     behavior: "auto"
@@ -213,12 +220,10 @@ document.querySelector(".brand").addEventListener("click", event => {
 function resetForm() {
   form.reset();
   editingId = null;
-  touchedSliders.clear();
   form.elements.date.value = localDate();
   form.elements.date.max = localDate();
   document.querySelector("#edit-banner").hidden = true;
   document.querySelector("#save-button").textContent = "Save check-in";
-  refreshSliders();
   updateSleepWindow();
   showStep(0, false);
 }
@@ -231,7 +236,7 @@ document.querySelector("#new-entry").addEventListener("click", () => {
 form.addEventListener("submit", event => {
   event.preventDefault();
   // Enter advances the current step rather than bypassing the check-in.
-  if (currentStep < 2) {
+  if (currentStep < lastStep) {
     if (validateStep(currentStep)) showStep(currentStep + 1);
     return;
   }
@@ -250,7 +255,9 @@ form.addEventListener("submit", event => {
     showError("Choose today or a past log date.");
     return;
   }
-  if (!validateStep(2)) return;
+  for (let index = 1; index < panels.length; index++) {
+    if (!validateStep(index)) return;
+  }
   if (!storageReady) {
     showError("Existing browser data could not be read. Recover it before saving new entries.");
     return;
@@ -258,37 +265,32 @@ form.addEventListener("submit", event => {
   const data = new FormData(form);
   const entry = Object.fromEntries(data.entries());
   entry.factors = data.getAll("factors");
-  if (records.some(record => record.id !== editingId && record.date === entry.date && record.phase === entry.phase)) {
+  entry.crew = AMIGOS.crewId();
+  if (mine().some(record => record.id !== editingId && record.date === entry.date && record.phase === entry.phase)) {
     showError("An entry already exists for this date and mission phase. Open My journal to edit it.");
     return;
   }
-  ["sleepHours", "sleepQuality", "mood", "stress", "fatigue"].forEach(name => {
+  ["sleepHours", "sleepQuality", "appetite", ...QUESTIONS.map(question => question.name)].forEach(name => {
     entry[name] = Number(entry[name]);
   });
   // An omitted optional measurement is unknown, not a measured zero.
-  ["activity", "water", "caffeine"].forEach(name => {
+  ["activity", "water", "caffeine", "meals"].forEach(name => {
     entry[name] = entry[name] === "" ? null : Number(entry[name]);
   });
+  // One number for the questionnaire, so it can be followed over time.
+  entry.mind = Number((QUESTIONS.reduce((sum, question) => sum + entry[question.name], 0) / QUESTIONS.length).toFixed(1));
   entry.id = editingId || crypto.randomUUID();
   entry.updatedAt = new Date().toISOString();
   if (persist([...records.filter(record => record.id !== entry.id), entry])) {
     resetForm();
     updateCount();
-    setView("history");
-    showToast("Check-in saved on this browser.");
+    setView("checkin");
+    showToast(`Check-in saved for ${AMIGOS.crew().name}.`);
   }
 });
 
 function updateCount() {
-  document.querySelector("#count").textContent = records.length;
-}
-
-// textContent prevents notes from being interpreted as executable HTML.
-function element(tag, text, className) {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (className) node.className = className;
-  return node;
+  document.querySelector("#count").textContent = mine().length;
 }
 
 function displayValue(value, unit = "") {
@@ -299,10 +301,11 @@ function renderHistory() {
   const container = document.querySelector("#entries");
   container.replaceChildren();
   const phase = document.querySelector("#phase-filter").value;
-  const entries = records.filter(record => phase === "all" || record.phase === phase)
+  const entries = mine().filter(record => phase === "all" || record.phase === phase)
     .sort((a, b) => b.date.localeCompare(a.date));
+  document.querySelector("#history-owner").textContent = `Check-ins saved for ${AMIGOS.crew().name}.`;
   if (!entries.length) {
-    container.append(element("div", "No check-ins here yet. Start with a new daily entry.", "empty"));
+    container.append(element("div", `No check-ins here yet for ${AMIGOS.crew().name}. Start with a new daily entry.`, "empty"));
     return;
   }
   entries.forEach(record => {
@@ -335,11 +338,11 @@ function renderHistory() {
     const values = [
       ["Actual sleep", displayValue(record.sleepHours, " h")],
       ["Sleep quality", displayValue(record.sleepQuality, " / 5")],
-      ["Mood", displayValue(record.mood, " / 5")],
-      ["Stress", displayValue(record.stress, " / 10")],
-      ["Tiredness", displayValue(record.fatigue, " / 10")],
-      ["Activity", displayValue(record.activity, " min")],
+      ["Appetite", displayValue(record.appetite, " / 5")],
+      ["Meals", displayValue(record.meals)],
       ["Water", displayValue(record.water, " mL")],
+      ["Mind score", displayValue(record.mind ?? record.mood, " / 5")],
+      ["Exercise", displayValue(record.activity, " min")],
       ["Caffeinated drinks", displayValue(record.caffeine)]
     ];
     values.forEach(([name, value]) => {
@@ -349,6 +352,11 @@ function renderHistory() {
     });
     card.append(header, metrics);
     card.append(element("p", `Sleep window: ${record.sleepStart.replace("T", " ")} to ${record.sleepEnd.replace("T", " ")}`));
+    const answers = QUESTIONS.filter(question => record[question.name]).map(question => {
+      const label = question.labels.split(",")[record[question.name] - 1];
+      return `${question.name[0].toUpperCase()}${question.name.slice(1)}: ${label}`;
+    });
+    if (answers.length) card.append(element("p", `Mental health answers: ${answers.join(" / ")}`));
     if (record.caffeineTime) card.append(element("p", `Last caffeinated drink: ${record.caffeineTime}`));
     if (record.factors?.length) card.append(element("p", `Context: ${record.factors.join(" / ")}`));
     if (record.notes) card.append(element("p", record.notes));
@@ -360,17 +368,13 @@ function editEntry(record) {
   resetForm();
   editingId = record.id;
   for (const [name, value] of Object.entries(record)) {
-    if (["id", "factors", "updatedAt"].includes(name)) continue;
+    if (["id", "factors", "updatedAt", "crew", "mind"].includes(name)) continue;
     const input = form.elements.namedItem(name);
     if (input) input.value = value ?? "";
   }
   form.querySelectorAll("[name=factors]").forEach(input => {
     input.checked = record.factors?.includes(input.value) || false;
   });
-  ["stress", "fatigue"].forEach(name => {
-    if (record[name] !== null && record[name] !== undefined) touchedSliders.add(name);
-  });
-  refreshSliders();
   updateSleepWindow();
   document.querySelector("#edit-banner").hidden = false;
   document.querySelector("#save-button").textContent = "Update check-in";
@@ -378,16 +382,74 @@ function editEntry(record) {
   showStep(0);
 }
 
+// Streak: check-in days in a row, counting back from today (or yesterday).
+function streakDays() {
+  const days = new Set(mine().map(record => record.date));
+  const day = new Date();
+  if (!days.has(localDate(day))) day.setDate(day.getDate() - 1);
+  let count = 0;
+  while (days.has(localDate(day))) {
+    count++;
+    day.setDate(day.getDate() - 1);
+  }
+  return count;
+}
+
+// Activities matched to the latest answers; a rotating mix when nothing is low.
+function suggestedActivities(latest) {
+  const activities = AMIGOS.data.activities;
+  const low = latest ? QUESTIONS.filter(question => latest[question.name] && latest[question.name] <= 2)
+    .map(question => question.tag) : [];
+  if (latest && latest.sleepQuality <= 2) low.push("sleep");
+  const matched = activities.filter(activity => activity.goodFor.some(tag => low.includes(tag)));
+  if (matched.length) return { picks: matched.slice(0, 3), reason: `Chosen from your latest answers: ${low.join(", ")} rated low.` };
+  const start = new Date().getDate() % activities.length;
+  const picks = [0, 4, 8].map(offset => activities[(start + offset) % activities.length]);
+  return {
+    picks,
+    reason: latest ? "A mix for today. Nothing in your latest check-in was rated low." :
+      "A mix for today. Save a check-in to get suggestions matched to your answers."
+  };
+}
+
+// Today's plan: streak, today's status and suggested activities for the active crew member.
+function renderToday() {
+  const box = document.querySelector("#today-panel");
+  const member = AMIGOS.crew();
+  const list = mine().sort((a, b) => b.date.localeCompare(a.date));
+  const doneToday = list.some(record => record.date === localDate());
+  const streak = streakDays();
+  const { picks, reason } = suggestedActivities(list[0]);
+  const head = element("div", undefined, "today-head");
+  const who = element("div", undefined, "today-stat");
+  who.append(element("small", "CHECK-IN FOR"), element("b", member.name));
+  const status = element("div", undefined, doneToday ? "today-stat is-done" : "today-stat");
+  status.append(element("small", "TODAY"), element("b", doneToday ? "✓ Check-in saved" : "○ Not done yet"));
+  const run = element("div", undefined, streak ? "today-stat is-done" : "today-stat");
+  run.append(element("small", "STREAK"), element("b", `${streak} day${streak === 1 ? "" : "s"} in a row`));
+  head.append(who, status, run);
+  const ideas = element("div", undefined, "today-ideas");
+  picks.forEach(activity => {
+    const card = element("div", undefined, "today-idea");
+    card.append(element("small", `${activity.type.toUpperCase()} · ${activity.minutes} MIN`),
+      element("b", activity.name), element("span", activity.how));
+    ideas.append(card);
+  });
+  box.replaceChildren(head, element("h2", "Suggested for you today"), element("p", reason), ideas);
+}
+
 document.querySelector("#phase-filter").addEventListener("change", renderHistory);
 document.querySelector("#export").addEventListener("click", () => {
-  if (!records.length) {
+  const own = mine();
+  if (!own.length) {
     showToast("Save a check-in before exporting.");
     return;
   }
   const data = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
-    records
+    crewMember: AMIGOS.crew().name,
+    records: own
   };
   const file = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json"
@@ -399,6 +461,23 @@ document.querySelector("#export").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 });
 
+// One crew selector in the top bar drives every view.
+const crewPicker = document.querySelector("#crew-select");
+AMIGOS.data.crew.forEach(member => {
+  const option = element("option", `${member.name} · ${member.role}`);
+  option.value = member.id;
+  crewPicker.append(option);
+});
+crewPicker.value = AMIGOS.crewId();
+crewPicker.addEventListener("change", () => AMIGOS.setCrew(crewPicker.value));
+document.addEventListener("amigos:crew", () => {
+  resetForm();
+  updateCount();
+  renderToday();
+  if (!document.querySelector("#history-view").hidden) renderHistory();
+  showToast(`Now showing ${AMIGOS.crew().name}.`);
+});
+
 document.querySelector("#today-label").textContent = new Date().toLocaleDateString("en", {
   weekday: "short",
   day: "numeric",
@@ -406,4 +485,5 @@ document.querySelector("#today-label").textContent = new Date().toLocaleDateStri
 });
 resetForm();
 updateCount();
+renderToday();
 if (!storageReady) showToast("Browser storage is unavailable or existing data could not be read.");

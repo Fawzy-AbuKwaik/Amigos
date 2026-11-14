@@ -1,0 +1,1538 @@
+/* Medical view. Builds on style.css: same surfaces, type scale, radii and controls. */
+:root {
+  --med-ok: #8fe3c4;
+  --med-out: #ffb45e;
+  --med-low: #ff9aa2;
+  --med-none: #c5d5e0;
+}
+
+/* Active crew member: always visible above every medical section. */
+.med-crew-label {
+  width: 250px;
+  flex-shrink: 0;
+}
+
+.med-identity {
+  border-left: 1px solid var(--line);
+  padding-left: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.med-avatar {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid #638ba1;
+  color: var(--sky);
+  background: #153e55;
+  font-weight: 650;
+  letter-spacing: 1px;
+}
+
+.med-identity small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+}
+
+.med-identity b {
+  display: block;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -.3px;
+}
+
+.med-identity span span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-profile {
+  margin-top: 14px;
+  background: #0d2130;
+  border: 1px solid #2d4b5f;
+  border-radius: 10px;
+  padding: 0 20px;
+}
+
+.med-profile summary {
+  cursor: pointer;
+  padding: 14px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #c3dded;
+}
+
+.med-profile summary span {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.med-profile .metrics {
+  margin: 4px 0 20px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.med-profile .metrics b {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.med-tabs {
+  border: 0;
+  padding: 0;
+  margin: 24px 0 0;
+}
+
+.med-sample-note {
+  display: flex;
+  gap: 9px;
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-sample-note span {
+  color: var(--sky);
+}
+
+.med-h2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -.3px;
+  margin: 30px 0 12px;
+}
+
+/* Status: icon + words + border style, so colour is never the only signal. */
+.med-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 20px;
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.med-normal {
+  color: var(--med-ok);
+  background: #12382f;
+  border-color: #4c9c85;
+}
+
+.med-below {
+  color: var(--med-low);
+  background: #3a2126;
+  border-color: var(--med-low);
+  border-width: 2px;
+}
+
+.med-over {
+  color: var(--med-out);
+  background: #3b2a14;
+  border-color: var(--med-out);
+  border-width: 2px;
+}
+
+.med-recheck {
+  color: var(--sky);
+  background: #153f57;
+  border-style: double;
+  border-width: 3px;
+}
+
+.med-nodata {
+  color: var(--med-none);
+  background: transparent;
+  border-style: dashed;
+}
+
+.med-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Measurement cards. */
+.med-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+  gap: 17px;
+  margin: 16px 0 0;
+}
+
+.med-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.med-card.is-open {
+  border-color: var(--sky);
+}
+
+.med-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.med-card h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.med-value {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -1px;
+  line-height: 1.1;
+}
+
+.med-value small {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.med-value.is-empty {
+  font-size: 20px;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.med-reason {
+  margin: 0;
+  font-size: 13px;
+  color: #c9dce8;
+}
+
+.med-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  font-size: 12px;
+}
+
+.med-facts dt {
+  color: var(--muted);
+}
+
+.med-facts dd {
+  margin: 0;
+  color: #d5e6f0;
+}
+
+.med-trend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #d5e6f0;
+}
+
+.med-trend b {
+  color: var(--sky);
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.med-refs {
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
+  font-size: 12px;
+  color: var(--muted);
+  display: grid;
+  gap: 7px;
+}
+
+.med-refs b {
+  display: block;
+  color: #c3dded;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .3px;
+}
+
+.med-refs .med-limit {
+  border: 1px dashed #4a6e83;
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+
+.med-card .secondary {
+  margin-top: auto;
+}
+
+/* Charts: line style and marker shape differ per series. */
+.med-chart svg {
+  display: block;
+  max-width: 100%;
+}
+
+.med-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.med-tick {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.med-band {
+  fill: #72d2ff12;
+  stroke: #72d2ff66;
+  stroke-dasharray: 4 4;
+}
+
+.med-line0,
+.med-line1 {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.med-line0 {
+  stroke: var(--sky);
+}
+
+.med-dot0 {
+  fill: var(--sky);
+}
+
+.med-line1 {
+  stroke: var(--ink);
+  stroke-dasharray: 6 4;
+}
+
+.med-dot1 {
+  fill: var(--ink);
+}
+
+.med-marker {
+  stroke: var(--med-out);
+  stroke-dasharray: 2 4;
+}
+
+.med-markertext {
+  fill: var(--med-out);
+  font-size: 12px;
+}
+
+.med-nochart {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed #4a6e83;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.med-chart-block {
+  background: #0d2130;
+  border: 1px solid #2d4b5f;
+  border-radius: 10px;
+  padding: 16px 16px 12px;
+  margin-top: 14px;
+}
+
+.med-chart-block h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.med-chart-key {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Same surface as .step-panel, for panels that are not check-in steps. */
+.med-panel {
+  border: 1px solid #315066;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #122c3e 0%, #102331 70%);
+  padding: 29px;
+  box-shadow: 0 14px 35px #00000012;
+}
+
+/* Detail panel under the cards. */
+#med-detail .step-panel {
+  margin-top: 18px;
+}
+
+.med-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #d5e6f0;
+}
+
+.med-sub {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 24px 0 10px;
+}
+
+.med-gap {
+  margin-top: 24px;
+}
+
+.med-first {
+  margin-top: 0;
+}
+
+.med-error:empty {
+  display: none;
+}
+
+.med-error {
+  margin-top: 18px;
+  border: 1px solid #9c5968;
+  background: #3a2531;
+  color: #ffced4;
+  padding: 13px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.med-caption {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: auto;
+}
+
+/* Tables: readings, tests, routine context. */
+.med-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.med-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.med-table th,
+.med-table td {
+  text-align: left;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.med-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.med-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.med-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.med-table .med-na {
+  color: var(--muted);
+}
+
+.med-link {
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--sky);
+  text-decoration: underline;
+  font-size: 12px;
+}
+
+.med-link.is-delete {
+  color: #ffb7c1;
+}
+
+/* Recommendations and missing-data prompts. */
+.med-reco {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--sky);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 18px;
+  align-items: center;
+}
+
+.med-reco h3 {
+  margin: 0 0 5px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.med-reco p {
+  margin: 0;
+  font-size: 13px;
+  color: #c9dce8;
+}
+
+.med-why {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-why li::before {
+  content: "· ";
+  color: var(--sky);
+}
+
+.med-why-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c3dded;
+  margin-top: 10px;
+}
+
+.med-reco-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.med-rule {
+  display: inline-block;
+  border: 1px dashed #4a6e83;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.med-missing {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  border: 1px dashed #4a6e83;
+  border-radius: 10px;
+  background: #0e2433;
+  padding: 12px 16px;
+  margin-bottom: 9px;
+  font-size: 13px;
+  color: #c9dce8;
+}
+
+.med-missing button {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.med-quiet {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+#routine-recos {
+  margin-bottom: 22px;
+}
+
+#routine-recos .med-h2 {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+/* Case summary. */
+.med-summary-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--sky);
+}
+
+.med-summary-section ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #d5e6f0;
+}
+
+.med-auth {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: #0d2130;
+  border: 1px solid #2d4b5f;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 18px 0;
+  cursor: pointer;
+}
+
+.med-auth input {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  accent-color: var(--sky);
+  flex-shrink: 0;
+}
+
+.primary:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1120px) {
+  .med-profile .metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  /* Three destinations share the compact navigation row. */
+  nav {
+    flex-wrap: wrap;
+  }
+
+  .nav {
+    flex: 1 1 150px;
+  }
+}
+
+@media (max-width: 540px) {
+  .med-crew-label {
+    width: 100%;
+  }
+
+  .med-identity {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 15px 0 0;
+  }
+
+  .med-profile .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .med-tabs label {
+    flex: 1 1 45%;
+  }
+
+  .med-reco {
+    grid-template-columns: 1fr;
+  }
+
+  .med-missing {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .med-value {
+    font-size: 30px;
+  }
+
+  .med-panel {
+    padding: 21px 16px;
+  }
+}
+
+#med-symptom-form {
+  margin-top: 18px;
+}
+
+/* Overview: body systems, percent circles, quick assessment. */
+.med-overview {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr) 320px;
+  gap: 17px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.med-pane {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.med-pane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.med-pane-head h2,
+.med-pane-head h3,
+.med-record h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.med-pane-head h3 b {
+  color: var(--sky);
+  font-weight: 600;
+}
+
+.med-pane-head>span {
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Body figure. Markers carry an icon in their label as well as a colour. */
+.med-body svg {
+  display: block;
+  width: 100%;
+  max-width: 330px;
+  margin: 0 auto;
+}
+
+.med-skin {
+  fill: #163a50;
+  stroke: #3a6f8c;
+  stroke-width: 1.5;
+}
+
+.med-organ {
+  fill: #72d2ff14;
+  stroke: #5b9fc0;
+  stroke-width: 1.3;
+}
+
+.med-organ.is-on {
+  fill: #72d2ff40;
+  stroke: var(--sky);
+  stroke-width: 2;
+}
+
+.med-mark {
+  cursor: pointer;
+  color: var(--med-none);
+}
+
+.med-mark-normal {
+  color: var(--med-ok);
+}
+
+.med-mark-below {
+  color: var(--med-low);
+}
+
+.med-mark-over {
+  color: var(--med-out);
+}
+
+.med-mark-recheck {
+  color: var(--sky);
+}
+
+.med-mark line {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: .5;
+}
+
+.med-mark-halo {
+  fill: #081724;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.med-mark-core {
+  fill: currentColor;
+}
+
+.med-mark text {
+  fill: currentColor;
+  font-size: 11.5px;
+  letter-spacing: .5px;
+  font-weight: 600;
+}
+
+.med-mark.is-on .med-mark-halo {
+  stroke-width: 4;
+}
+
+.med-mark.is-on text {
+  text-decoration: underline;
+}
+
+.med-mark:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 2px;
+}
+
+#med-systems {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+  display: grid;
+  gap: 7px;
+}
+
+.med-system {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 7px 10px;
+  border: 1px solid #39586e;
+  border-radius: 9px;
+  background: #0d2333;
+  color: #c3dded;
+  font-size: 13px;
+  text-align: left;
+}
+
+.med-system:hover {
+  background: #173f56;
+}
+
+.med-system.is-on {
+  border: 2px solid var(--sky);
+  background: #17445f;
+  color: var(--sky);
+}
+
+/* Percent circles. */
+.med-ring-key {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-ring-key b {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.med-key-below {
+  color: var(--med-low);
+}
+
+.med-key-normal {
+  color: var(--med-ok);
+}
+
+.med-key-over {
+  color: var(--med-out);
+}
+
+.med-rings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 12px;
+}
+
+.med-ring-card {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #39586e;
+  border-radius: 10px;
+  background: #0d2333;
+  color: var(--ink);
+  text-align: left;
+}
+
+.med-ring-card:hover {
+  border-color: #6398b6;
+  background: #11293a;
+}
+
+.med-ring-card.is-picked {
+  border: 2px solid var(--sky);
+  background: #143549;
+  padding: 13px;
+}
+
+.med-ring svg {
+  display: block;
+}
+
+.med-ring-track {
+  fill: none;
+  stroke: #26475b;
+  stroke-width: 7;
+}
+
+.med-ring-fill {
+  fill: none;
+  stroke: var(--med-none);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.med-ring-normal .med-ring-fill {
+  stroke: var(--med-ok);
+}
+
+.med-ring-below .med-ring-fill {
+  stroke: var(--med-low);
+}
+
+.med-ring-over .med-ring-fill {
+  stroke: var(--med-out);
+}
+
+.med-ring-recheck .med-ring-fill {
+  stroke: var(--sky);
+  opacity: .55;
+}
+
+.med-ring-nodata .med-ring-track {
+  stroke-dasharray: 4 5;
+}
+
+.med-ring-text {
+  fill: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.med-ring-body {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.med-ring-name {
+  font-size: 13px;
+  color: #c3dded;
+}
+
+.med-ring-value {
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -.6px;
+  line-height: 1.15;
+}
+
+.med-ring-value small {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+  margin-left: 5px;
+}
+
+.med-ring-foot {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.med-ring-foot span:first-child {
+  color: #c9dce8;
+}
+
+#med-trend {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+#med-trend .med-pane-head {
+  margin-bottom: 6px;
+}
+
+/* Quick assessment. */
+.med-banner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 10px;
+  padding: 13px 14px;
+  margin-bottom: 12px;
+}
+
+.med-banner b,
+.med-banner span span {
+  display: block;
+}
+
+.med-banner b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.med-banner span span {
+  font-size: 12px;
+  color: #c9dce8;
+}
+
+.med-banner-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  font-size: 15px;
+}
+
+.med-banner-normal {
+  color: var(--med-ok);
+  background: #12382f;
+  border-color: #4c9c85;
+}
+
+.med-banner-over {
+  color: var(--med-out);
+  background: #3b2a14;
+  border-color: var(--med-out);
+}
+
+.med-banner-nodata {
+  color: var(--med-none);
+  border-style: dashed;
+}
+
+.med-pane-quick .med-reco {
+  grid-template-columns: 1fr;
+  padding: 14px 16px;
+  background: #0d2333;
+}
+
+.med-pane-quick .med-reco .secondary {
+  justify-self: start;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.med-rule-note {
+  font-size: 11.5px;
+  margin: 4px 0 12px;
+}
+
+.med-call {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--med-out);
+  border-radius: 10px;
+  background: #33230f;
+  padding: 13px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #ffe2bd;
+}
+
+.med-call b {
+  color: var(--med-out);
+  font-size: 13px;
+}
+
+/* Record + daily routine row. */
+.med-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 17px;
+  margin-top: 17px;
+}
+
+.med-record {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.med-record p {
+  margin-top: 5px;
+}
+
+.med-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.med-tasks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 9px;
+}
+
+.med-task {
+  border: 1px dashed #4a6e83;
+  border-radius: 9px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.med-task b {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c3dded;
+}
+
+.med-task.is-done {
+  border: 1px solid #4c9c85;
+  background: #10302a;
+}
+
+.med-task.is-done b {
+  color: var(--med-ok);
+}
+
+#routine-recos .med-profile {
+  margin-top: 0;
+}
+
+#routine-recos .med-reco {
+  background: #102434;
+}
+
+@media (max-width: 1500px) {
+  .med-overview {
+    grid-template-columns: 290px minmax(0, 1fr);
+  }
+
+  .med-pane-quick {
+    grid-column: 1 / -1;
+  }
+
+  .med-pane-quick .med-reco {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+@media (max-width: 960px) {
+  .med-overview,
+  .med-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .med-pane-quick .med-reco {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 540px) {
+  .med-pane {
+    padding: 16px;
+  }
+
+  .med-record-actions button {
+    flex: 1 1 100%;
+  }
+}
+
+/* Shared crew selector in the top bar. */
+.crew-pick {
+  margin-left: auto;
+  margin-right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  color: var(--muted);
+}
+
+.crew-pick select {
+  width: auto !important;
+  min-height: 38px !important;
+  margin: 0 !important;
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  letter-spacing: 0;
+}
+
+.med-crew .med-identity:first-child {
+  border-left: 0;
+  border-top: 0;
+  padding: 0;
+}
+
+/* Daily check-in: four steps, questionnaire, today's plan. */
+.progress {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.question+.question {
+  margin-top: 24px;
+}
+
+#today-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+
+#today-panel h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 18px 0 3px;
+}
+
+#today-panel p {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.today-head {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.today-stat {
+  border: 1px dashed #4a6e83;
+  border-radius: 9px;
+  padding: 10px 13px;
+}
+
+.today-stat.is-done {
+  border: 1px solid #4c9c85;
+  background: #10302a;
+}
+
+.today-stat small,
+.today-idea small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.today-stat b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.today-stat.is-done b {
+  color: var(--med-ok);
+}
+
+.today-ideas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.today-idea {
+  border: 1px solid #39586e;
+  border-radius: 9px;
+  background: #0d2333;
+  padding: 12px 14px;
+  display: grid;
+  gap: 3px;
+}
+
+.today-idea b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sky);
+}
+
+.today-idea span {
+  font-size: 12px;
+  color: #c9dce8;
+}
+
+/* Laboratory: test list. */
+.med-system-block {
+  margin-top: 22px;
+}
+
+.med-system-block h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.med-system-block>p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.med-hazard {
+  display: inline-block;
+  border: 1px solid #39586e;
+  border-radius: 20px;
+  padding: 2px 9px;
+  margin: 0 5px 4px 0;
+  font-size: 11px;
+  color: #c3dded;
+}
+
+.med-test {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1.5fr) minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 16px;
+  margin-bottom: 8px;
+}
+
+.med-test.is-off {
+  opacity: .6;
+  border-style: dashed;
+}
+
+.med-test input[type=checkbox] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--sky);
+  cursor: pointer;
+}
+
+.med-test b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.med-test small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.med-test-result {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  font-size: 13px;
+}
+
+.med-test .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* Signs and symptoms. */
+.med-search {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.med-symptom-group {
+  margin-top: 18px;
+}
+
+.med-symptom-group legend {
+  margin-bottom: 9px;
+  font-size: 13px;
+  color: #c3dded;
+}
+
+#med-outcome {
+  margin-top: 18px;
+}
+
+.med-outcome {
+  border: 2px solid;
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: var(--panel);
+}
+
+.med-outcome h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.med-outcome p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #d5e6f0;
+}
+
+.med-outcome ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #d5e6f0;
+}
+
+.med-outcome-now {
+  border-color: var(--med-low);
+  background: #3a2126;
+}
+
+.med-outcome-now h3 {
+  color: var(--med-low);
+}
+
+.med-outcome-tests {
+  border-color: var(--med-out);
+}
+
+.med-outcome-tests h3 {
+  color: var(--med-out);
+}
+
+.med-outcome-self {
+  border-color: #4c9c85;
+}
+
+.med-outcome-self h3 {
+  color: var(--med-ok);
+}
+
+.med-outcome-tests-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.med-outcome-tests-list .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.med-try {
+  margin-top: 8px !important;
+  font-size: 12px !important;
+  color: var(--sky) !important;
+}
+
+/* Assessment: period and combined chart. */
+#med-period {
+  margin-top: 20px;
+}
+
+.med-combined {
+  margin-top: 17px;
+}
+
+@media (max-width: 800px) {
+  .crew-pick {
+    margin-right: 12px;
+  }
+
+  .today-head,
+  .today-ideas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .med-test {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .med-test-result,
+  .med-test .secondary {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 540px) {
+  .topbar {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 10px 0;
+  }
+
+  .crew-pick {
+    order: 3;
+    width: 100%;
+    margin: 0;
+  }
+
+  .crew-pick select {
+    flex: 1;
+  }
+
+  .progress li div {
+    font-size: 10px;
+  }
+}
+
+.med-reco.is-urgent {
+  border-left-color: var(--med-low);
+  border-color: var(--med-low);
+  background: #3a2126;
+}
+
+.med-reco.is-urgent h3 {
+  color: var(--med-low);
+}

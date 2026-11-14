@@ -9,6 +9,7 @@
   </title>
   <meta content="A simple daily routine check-in for crew wellbeing." name="description"/>
   <link href="css/style.css" rel="stylesheet"/>
+  <link href="css/medical.css" rel="stylesheet"/>
  </head>
  <body>
   <!-- Navigation stays separate from the form on smaller screens. -->
@@ -51,6 +52,18 @@
       0
      </span>
     </button>
+    <button class="nav" data-view="lab" type="button">
+     <span aria-hidden="true">
+      ✚
+     </span>
+     Laboratory
+    </button>
+    <button class="nav" data-view="assess" type="button">
+     <span aria-hidden="true">
+      ◔
+     </span>
+     Assessment
+    </button>
    </nav>
    <div class="sidebar-bottom">
     <div aria-hidden="true" class="orbit-art">
@@ -87,6 +100,10 @@
       DAILY CHECK-IN
      </span>
     </span>
+    <label class="crew-pick">
+     CREW MEMBER
+     <select id="crew-select"></select>
+    </label>
     <span class="prototype">
      <span class="status-dot">
      </span>
@@ -108,6 +125,12 @@
      </div>
      <div class="date-badge" id="today-label">
      </div>
+    </div>
+    <!-- Routine-related recommendations from the Medical view appear here. -->
+    <!-- Streak, today's status and suggested activities for the active crew member. -->
+    <div id="today-panel">
+    </div>
+    <div hidden="" id="routine-recos">
     </div>
     <!-- Required fields are validated within each step, never while hidden. -->
     <form id="routine-form" novalidate="">
@@ -141,39 +164,10 @@
       </button>
      </div>
      <ol aria-label="Check-in progress" class="progress">
-      <li aria-current="step" class="current">
-       <span>
-        1
-       </span>
-       <div>
-        Sleep
-        <small>
-         Your rest
-        </small>
-       </div>
-      </li>
-      <li>
-       <span>
-        2
-       </span>
-       <div>
-        Mood &amp; energy
-        <small>
-         How you feel
-        </small>
-       </div>
-      </li>
-      <li>
-       <span>
-        3
-       </span>
-       <div>
-        Daily habits
-        <small>
-         Optional details
-        </small>
-       </div>
-      </li>
+      <li aria-current="step" class="current"><span>1</span><div>Sleep<small>Your rest</small></div></li>
+      <li><span>2</span><div>Food &amp; water<small>What you had</small></div></li>
+      <li><span>3</span><div>Mind &amp; mood<small>How you feel</small></div></li>
+      <li><span>4</span><div>Activity<small>Optional details</small></div></li>
      </ol>
      <section aria-labelledby="sleep-heading" class="step-panel" data-step="0">
       <div class="panel-heading">
@@ -182,7 +176,7 @@
        </span>
        <div>
         <p class="eyebrow">
-         STEP 01 / 03
+         STEP 01 / 04
         </p>
         <h2 id="sleep-heading" tabindex="-1">
          Let's start with your sleep
@@ -241,150 +235,83 @@
        </div>
       </fieldset>
      </section>
-     <section aria-labelledby="mood-heading" class="step-panel" data-step="1" hidden="">
+     <section aria-labelledby="food-heading" class="step-panel" data-step="1" hidden="">
       <div class="panel-heading">
-       <span aria-hidden="true" class="section-icon">
-        ☼
-       </span>
+       <span aria-hidden="true" class="section-icon">◔</span>
        <div>
-        <p class="eyebrow">
-         STEP 02 / 03
-        </p>
-        <h2 id="mood-heading" tabindex="-1">
-         How did you feel today?
-        </h2>
-        <p>
-         Choose what best describes your day. There is no right answer.
-        </p>
+        <p class="eyebrow">STEP 02 / 04</p>
+        <h2 id="food-heading" tabindex="-1">Food and water</h2>
+        <p>What you ate and drank today.</p>
        </div>
-       <span class="required-tag">
-        Required
-       </span>
+       <span class="required-tag">Required</span>
       </div>
       <fieldset class="rating-field">
-       <legend>
-        How was your overall mood today?
-       </legend>
-       <div class="rating" data-labels="Very low,Low,Neutral,Good,Very good" data-name="mood">
-       </div>
+       <legend>How was your appetite today?</legend>
+       <div class="rating" data-labels="Very poor,Poor,Fair,Good,Very good" data-name="appetite"></div>
       </fieldset>
-      <div class="slider-card">
-       <div class="slider-title">
-        <label for="stress">
-         How stressed did you feel today?
-        </label>
-        <output for="stress" id="stress-value">
-         5 / 10
-        </output>
-       </div>
-       <input aria-describedby="stress-scale" id="stress" max="10" min="0" name="stress" type="range" value="5"/>
-       <div class="range-labels" id="stress-scale">
-        <span>
-         0 · No stress
-        </span>
-        <span>
-         10 · Very high stress
-        </span>
-       </div>
-      </div>
-      <div class="slider-card">
-       <div class="slider-title">
-        <label for="fatigue">
-         How tired did you feel overall today?
-        </label>
-        <output for="fatigue" id="fatigue-value">
-         5 / 10
-        </output>
-       </div>
-       <input aria-describedby="fatigue-scale" id="fatigue" max="10" min="0" name="fatigue" type="range" value="5"/>
-       <div class="range-labels" id="fatigue-scale">
-        <span>
-         0 · Not tired
-        </span>
-        <span>
-         10 · Extremely tired
-        </span>
-       </div>
-      </div>
-      <p class="helper-note">
-       Move each slider to reflect your day. These are personal ratings, not clinical scores.
-      </p>
-     </section>
-     <section aria-labelledby="habits-heading" class="step-panel" data-step="2" hidden="">
-      <div class="panel-heading">
-       <span aria-hidden="true" class="section-icon">
-        ↗
-       </span>
-       <div>
-        <p class="eyebrow">
-         STEP 03 / 03
-        </p>
-        <h2 id="habits-heading" tabindex="-1">
-         Add a little context
-        </h2>
-        <p>
-         Fill in what you know, or save now. Every field here is optional.
-        </p>
-       </div>
-       <span class="optional-tag">
-        Optional
-       </span>
-      </div>
-      <div class="two-column">
+      <div class="two-column med-gap">
        <label>
-        Physical activity
-        <!-- <span class="number-with-unit"> -->
-         <input max="1440" min="0" name="activity" placeholder="e.g. 30" step="1" type="number"/>
-         <span>
-          min
-         </span>
-        <!-- </span> -->
+        Meals you ate
+        <input max="10" min="0" name="meals" placeholder="e.g. 3" step="1" type="number"/>
+        <span class="field-hint">Full meals, not snacks. Optional.</span>
        </label>
        <label>
-        Water you drank
-        <!-- <span class="number-with-unit"> -->
-         <input min="0" name="water" placeholder="e.g. 2000" step="1" type="number"/>
-         <span>
-          mL
-         </span>
-        <!-- </span> -->
-        <span class="field-hint">
-         Plain water only; not all drinks.
-        </span>
+        Water you drank (mL)
+        <input min="0" name="water" placeholder="e.g. 2000" step="1" type="number"/>
+        <span class="field-hint">Plain water only; not all drinks. Optional.</span>
        </label>
        <label>
         Caffeinated drinks
-        <!-- <span class="number-with-unit"> -->
-         <input min="0" name="caffeine" placeholder="e.g. 2" step="1" type="number"/>
-         <span>
-          drinks
-         </span>
-        <!-- </span> -->
+        <input min="0" name="caffeine" placeholder="e.g. 2" step="1" type="number"/>
+        <span class="field-hint">Drink count is not a caffeine dose. Optional.</span>
        </label>
        <label>
         Last caffeinated drink
         <input name="caffeineTime" type="time"/>
-        <span class="field-hint">
-         Drink count is not a caffeine dose.
-        </span>
+        <span class="field-hint">Optional.</span>
        </label>
       </div>
-      <fieldset class="context-field">
-       <legend>
-        Did anything affect your routine?
-       </legend>
-       <p class="field-hint">
-        Choose any that apply.
-       </p>
-       <div class="chips" id="factors">
+     </section>
+     <section aria-labelledby="mind-heading" class="step-panel" data-step="2" hidden="">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">☼</span>
+       <div>
+        <p class="eyebrow">STEP 03 / 04</p>
+        <h2 id="mind-heading" tabindex="-1">Mind and mood</h2>
+        <p>Choose what best describes your day. There is no right answer.</p>
        </div>
+       <span class="required-tag">Required</span>
+      </div>
+      <!-- Questions are filled in from js/data.js. -->
+      <div id="mind-questions"></div>
+      <p class="helper-note">
+       Personal ratings, not clinical scores. These are placeholder questions until the team's questionnaire is loaded.
+      </p>
+     </section>
+     <section aria-labelledby="habits-heading" class="step-panel" data-step="3" hidden="">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">↗</span>
+       <div>
+        <p class="eyebrow">STEP 04 / 04</p>
+        <h2 id="habits-heading" tabindex="-1">Activity and context</h2>
+        <p>Fill in what you know, or save now. Every field here is optional.</p>
+       </div>
+       <span class="optional-tag">Optional</span>
+      </div>
+      <label>
+       Exercise today (minutes)
+       <input max="1440" min="0" name="activity" placeholder="e.g. 30" step="1" type="number"/>
+       <span class="field-hint">Resistance and aerobic exercise together.</span>
+      </label>
+      <fieldset class="context-field">
+       <legend>Did anything affect your routine?</legend>
+       <p class="field-hint">Choose any that apply.</p>
+       <div class="chips" id="factors"></div>
       </fieldset>
       <label class="notes-label">
        Anything else you'd like to note?
        <textarea maxlength="1500" name="notes" placeholder="A busy day, a change in schedule, or something on your mind..." rows="3"></textarea>
-       <span class="field-hint">
-        Optional. Avoid identifying details.
-       </span>
+       <span class="field-hint">Optional. Avoid identifying details.</span>
       </label>
      </section>
      <div id="form-error" role="alert" tabindex="-1">
@@ -435,7 +362,7 @@
       <h1 id="history-heading">
        My journal
       </h1>
-      <p>
+      <p id="history-owner">
        A space to revisit your daily check-ins.
       </p>
      </div>
@@ -468,10 +395,153 @@
      Self-reported entries. No clinical score or diagnosis.
     </p>
    </section>
+   <!-- Medical view: self-assessment and decision support, never a diagnosis. Rendered by js/medical.js. -->
+   <section aria-labelledby="medical-heading" hidden="" id="medical-view">
+    <div class="intro">
+     <div>
+      <p class="eyebrow" id="med-eyebrow"></p>
+      <h1 id="medical-heading"></h1>
+      <p id="med-intro"></p>
+     </div>
+     <div class="date-badge" id="med-updated"></div>
+    </div>
+    <div class="context-panel med-crew">
+     <div aria-live="polite" class="med-identity" id="med-identity"></div>
+    </div>
+    <details class="med-profile">
+     <summary>Health profile <span id="med-profile-name"></span></summary>
+     <div class="metrics" id="med-profile-body"></div>
+    </details>
+    <fieldset class="phase med-tabs" id="med-tabs">
+     <legend>Section</legend>
+     <label data-mode="lab"><input name="medtab" type="radio" value="tests"/><span>Tests</span></label>
+     <label data-mode="lab"><input name="medtab" type="radio" value="symptoms"/><span>Signs &amp; symptoms</span></label>
+     <label data-mode="assess"><input name="medtab" type="radio" value="dash"/><span>Overview</span></label>
+     <label data-mode="assess"><input name="medtab" type="radio" value="related"/><span>Related indicators</span></label>
+     <label data-mode="assess"><input name="medtab" type="radio" value="summary"/><span>Case summary</span></label>
+    </fieldset>
+    <p class="med-sample-note">
+     <span aria-hidden="true">▣</span>
+     Prototype: crew, device readings, ranges, symptom rules and recommendations are placeholder data until the research tables are loaded. Entries you add are saved on this browser only.
+    </p>
+
+    <div data-med-tab="tests" hidden="">
+     <h2 class="med-h2">Tests on this vehicle</h2>
+     <p class="med-quiet">
+      Every test is listed. Untick the ones your vehicle does not carry; they are then left out of recommendations and of the tests suggested for symptoms.
+     </p>
+     <fieldset class="phase med-tabs med-groups" id="med-presets">
+      <legend>Show</legend>
+     </fieldset>
+     <div id="med-testlist"></div>
+    </div>
+
+    <div data-med-tab="symptoms" hidden="">
+     <!-- Not a .step-panel: app.js treats those as check-in steps. -->
+     <form class="med-panel" id="med-symptom-form" novalidate="">
+      <div class="panel-heading">
+       <span aria-hidden="true" class="section-icon">✎</span>
+       <div>
+        <p class="eyebrow">SIGNS AND SYMPTOMS</p>
+        <h2>What are you noticing?</h2>
+        <p>Tick everything that applies. The app then tells you whether tests are needed. Logged for <b data-med-name=""></b>.</p>
+       </div>
+      </div>
+      <label class="med-search">
+       Find a sign or symptom
+       <input id="med-symptom-search" placeholder="Type to filter, for example: vision" type="search"/>
+      </label>
+      <div id="med-symptom-groups"></div>
+      <fieldset class="rating-field med-gap">
+       <legend>How strong is it overall?</legend>
+       <div class="rating" data-labels="Very mild,Mild,Moderate,Strong,Severe" data-name="symptomSeverity"></div>
+      </fieldset>
+      <div class="two-column med-gap">
+       <label>
+        When did you notice it?
+        <input name="at" required="" type="datetime-local"/>
+       </label>
+       <label>
+        Note
+        <input maxlength="200" name="note" placeholder="e.g. when standing up" type="text"/>
+        <span class="field-hint">Optional.</span>
+       </label>
+      </div>
+      <div class="med-error" id="med-symptom-error" role="alert"></div>
+      <div class="step-actions">
+       <span class="med-caption">Symptoms are your own report, not a clinical finding.</span>
+       <button class="primary" type="submit">Check what to do <span aria-hidden="true">→</span></button>
+      </div>
+     </form>
+     <div id="med-outcome"></div>
+     <h2 class="med-h2">Recent symptoms</h2>
+     <div id="med-symptom-list"></div>
+    </div>
+
+    <div data-med-tab="dash" hidden="">
+     <fieldset class="phase med-tabs med-groups" id="med-period">
+      <legend>Period to assess</legend>
+      <label><input name="medperiod" type="radio" value="7"/><span>Last 7 days</span></label>
+      <label><input name="medperiod" type="radio" value="30"/><span>Last 30 days</span></label>
+      <label><input name="medperiod" type="radio" value="90"/><span>Last 90 days</span></label>
+     </fieldset>
+     <div class="med-overview">
+      <section class="med-pane med-pane-body">
+       <div class="med-pane-head"><h2>Body systems</h2><span>SELECT TO EXPLORE</span></div>
+       <div id="med-body"></div>
+       <div id="med-systems"></div>
+      </section>
+      <section class="med-pane med-pane-cards">
+       <div class="med-pane-head"><h2 id="med-cards-title">Current results</h2><span id="med-cards-sub"></span></div>
+       <p class="med-ring-key">
+        Each circle shows where the result sits. 25–75% is the normal range:
+        <b class="med-key-below">▼ below is red</b>, <b class="med-key-normal">✓ normal is green</b>,
+        <b class="med-key-over">▲ over is orange</b>. Tap a result to see its trend.
+       </p>
+       <div class="med-rings" id="med-cards"></div>
+       <div id="med-trend"></div>
+      </section>
+      <section class="med-pane med-pane-quick">
+       <div class="med-pane-head"><h2>Quick assessment</h2><span>SHOWN IN ALL VIEWS</span></div>
+       <div id="med-recos"></div>
+      </section>
+     </div>
+     <section class="med-pane med-combined">
+      <div class="med-pane-head"><h2>Daily routine and lab tests together</h2><span id="med-combined-sub"></span></div>
+      <div id="med-combined"></div>
+     </section>
+     <div class="med-bottom">
+      <section class="med-pane med-record" id="med-record"></section>
+      <section class="med-pane" id="med-routine"></section>
+     </div>
+    </div>
+
+    <div data-med-tab="related" hidden="">
+     <h2 class="med-h2">View related indicators together</h2>
+     <fieldset class="phase med-tabs med-groups" id="med-groups">
+      <legend>Choose a group</legend>
+     </fieldset>
+     <div id="med-related"></div>
+    </div>
+
+    <div data-med-tab="summary" hidden="">
+     <div id="med-summary"></div>
+    </div>
+
+    <div id="med-detail"></div>
+
+    <p class="medical">
+     Decision support only. Statuses compare results with published general references; they are not a diagnosis and do not replace the flight surgeon.
+    </p>
+   </section>
   </main>
   <div hidden="" id="toast" role="status">
   </div>
+  <script src="js/data.js">
+  </script>
   <script src="js/app.js">
+  </script>
+  <script src="js/medical.js">
   </script>
  </body>
 </html>
