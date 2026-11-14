@@ -494,6 +494,7 @@
           title: `Contact the flight surgeon now: ${entry.name.toLowerCase()}`,
           action: "This needs a fast response. Contact the flight surgeon using your mission procedure. Run tests only if that does not delay the call.",
           why: [logged, info.urgency === "now" ? "This symptom is marked as needing a fast response" : "You rated it strong or severe"],
+          rule: "now",
           button: ["Open case summary", () => openTab("summary")]
         });
       } else if (info.urgency === "tests") {
@@ -504,6 +505,7 @@
             action: `These results will give you a better recommendation: ${missing.map(id => VITALS[id].name).join(", ")}.`,
             why: [logged, "No result for these tests since the symptom was logged"],
             mental: info.care,
+            rule: "tests", tests: missing,
             button: ["Enter a result", () => openDetail(missing[0])]
           });
         }
@@ -517,6 +519,7 @@
         action: "Log today's water in the Daily check-in and follow your mission fluid plan, then repeat the reading. If it stays below the reference or you feel dizzy, contact the flight surgeon using your mission procedure.",
         why: [line(bp), water.zone === "nodata" ? "Water: not recorded in the Daily check-in" : line(water), symptomLine("Dizziness")],
         mental: "Move slowly when you change position, and pause before starting a task.",
+        rule: "bpfluids", tests: ["bp"],
         button: measure("bp")
       });
       used.add("bp").add("water");
@@ -530,6 +533,7 @@
         title: "Recheck temperature and heart rate together",
         action: "Rest for 15 minutes, drink water, then repeat both. If both are still raised, contact the flight surgeon using your mission procedure.",
         why: [line(temp), line(hr), baseHr ? `Heart rate baseline ${baseHr} bpm` : null, symptomLine("Fever or chills")],
+        rule: "temphr", tests: ["temp", "hr"],
         button: measure("temp")
       });
       used.add("temp").add("hr");
@@ -542,6 +546,7 @@
         why: [line(mind), line(sleep)],
         mental: "Pick one small thing you can finish today, and tell a crewmate how you are doing.",
         activities: activitiesFor(["mood", "connection", "sleep"]),
+        rule: "moodsleep", tests: [],
         button: checkin
       });
       used.add("mind").add("sleep");
@@ -558,6 +563,7 @@
           action: "The current result and the average for the period are both outside the normal range. Tell the flight surgeon using your mission procedure.",
           why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
           activities: tags && activitiesFor(tags),
+          rule: "stayed", tests: vital ? [id] : [],
           button: vital ? measure(id) : checkin
         });
       } else if (flagged(x)) {
@@ -568,6 +574,7 @@
             "Follow your mission plan today and log it in the Daily check-in. If it continues for several days, tell the flight surgeon.",
           why: [line(x), `Reference: ${x.refText}`, symptomLine(linkedSymptom(id))],
           activities: tags && activitiesFor(tags),
+          rule: "differs", tests: vital ? [id] : [],
           button: vital ? measure(id) : checkin
         });
       } else if (x.zone === "normal" && x.avgZone && x.avgZone !== "normal") {
@@ -575,6 +582,7 @@
           title: `Keep watching your ${lower(x)}`,
           action: `The current result is normal, but the average for the period is ${x.avgZone === "below" ? "below" : "over"} the normal range. Keep recording it so the trend is clear.`,
           why: [line(x), `Reference: ${x.refText}`],
+          rule: "watch", tests: vital ? [id] : [],
           button: vital ? measure(id) : checkin
         });
       } else if (x.zone === "recheck") {
@@ -582,6 +590,7 @@
           title: `Take a new ${lower(x)} reading`,
           action: "A fresh reading is needed before this result can be compared with the normal range.",
           why: [x.reason, `Last reading: ${x.valueText} · ${x.when}`],
+          rule: "recheck", tests: [id],
           button: ["Measure now", () => openDetail(id)]
         });
       }
@@ -591,6 +600,7 @@
         title: "Complete today's check-in",
         action: "Sleep, food, water, mood and exercise feed the assessment and its recommendations.",
         why: [`No Daily check-in saved for today (${localDate()})`],
+        rule: "checkin", tests: [],
         button: checkin
       });
     }
@@ -611,8 +621,36 @@
         item.activities && item.activities.length ?
         h("p", { class: "med-try", text: `Activities to try: ${item.activities.join(" · ")}` }) : null,
         h("div", { class: "med-why-title", text: "Prompted by" }),
-        h("ul", { class: "med-why" }, ...item.why.filter(Boolean).map(text => h("li", { text })))),
+        h("ul", { class: "med-why" }, ...item.why.filter(Boolean).map(text => h("li", { text }))),
+        evidencePanel(item)),
       button);
+  }
+
+  // "Evidence" button: what the recommendation rests on, from the content file.
+  function evidencePanel(item) {
+    const rule = (DATA.rules || {})[item.rule];
+    if (!rule) return null;
+    const rows = [];
+    (rule.sources || []).forEach(id => {
+      const src = DATA.sources[id];
+      if (!src) return;
+      rows.push(h("li", {}, `${src.title} (${src.org}) `,
+        src.url ? h("a", { href: src.url, target: "_blank", rel: "noopener noreferrer", text: "Open document" }) :
+          h("span", { class: "med-quiet", text: "· link pending" })));
+    });
+    (item.tests || []).forEach(id => {
+      const test = DATA.tests.find(t => t.id === id);
+      if (!test) return;
+      rows.push(h("li", { text: `${test.name}: ${test.refText}. Source: ${test.source}.` }));
+      const system = DATA.systems.find(s => s.id === test.system);
+      if (system) rows.push(h("li", { text: `Spaceflight link (${system.hazards.map(k => DATA.hazards[k]).join(", ")}): ${system.explain}` }));
+    });
+    const placeholder = rows.some(r => r.textContent.includes("PLACEHOLDER"));
+    return h("details", { class: "med-evidence" },
+      h("summary", { text: "Evidence" }),
+      h("p", {}, h("strong", { text: rule.kind === "guidance" ? "Published reference ranges. " : "App suggestion, not yet sourced. " }), rule.note),
+      rows.length ? h("ul", {}, ...rows) : h("p", { class: "med-quiet", text: "Source pending." }),
+      placeholder ? h("p", { class: "med-quiet", text: "Some ranges here are placeholders until the research team's source is loaded." }) : null);
   }
 
   const RULE_NOTE = "Placeholder rules until the research data is loaded. Decision support only, never a diagnosis.";

@@ -1536,3 +1536,10 @@
 .med-reco.is-urgent h3 {
   color: var(--med-low);
 }
+
+/* Evidence button inside each recommendation */
+.med-evidence { margin-top: .6rem; font-size: .88rem; }
+.med-evidence summary { cursor: pointer; font-weight: 600; color: var(--accent, #7cc4ff); }
+.med-evidence ul { margin: .4rem 0 0; padding-left: 1.1rem; }
+.med-evidence li { margin: .25rem 0; }
+.med-evidence p { margin: .4rem 0 0; }
